@@ -1,0 +1,195 @@
+{
+  "den_led_day": {
+    "name": "Đèn Led Dây",
+    "room": "phong_rd",
+    "type": "light",
+    "onoff_ga": "0/0/1",
+    "status_ga": "0/0/2",
+    "supports_brightness": false,
+    "aliases": [
+      "đèn led dây",
+      "led dây",
+      "đèn dây",
+      "đèn led"
+    ],
+    "role": "simulate_led_strip",
+    "safety_level": "safe_demo",
+    "require_confirm": false,
+    "enabled": true
+  },
+  "den_tron": {
+    "name": "Đèn Tròn",
+    "room": "phong_rd",
+    "type": "light",
+    "onoff_ga": "0/0/3",
+    "status_ga": "0/0/4",
+    "supports_brightness": false,
+    "aliases": [
+      "đèn tròn",
+      "đèn bóng tròn",
+      "đèn chính",
+      "đèn chrome",
+      "chrome"
+    ],
+    "role": "simulate_main_light",
+    "safety_level": "safe_demo",
+    "require_confirm": false,
+    "enabled": true
+  },
+  "den_d": {
+    "name": "Đèn D",
+    "room": "phong_rd",
+    "type": "light",
+    "onoff_ga": "0/0/7",
+    "status_ga": "0/0/8",
+    "supports_brightness": false,
+    "aliases": [
+      "đèn d",
+      "led d",
+      "đèn phụ d"
+    ],
+    "role": "simulate_aux_light",
+    "safety_level": "safe_demo",
+    "require_confirm": false,
+    "enabled": true
+  },
+  "den_e": {
+    "name": "Đèn E",
+    "room": "phong_rd",
+    "type": "light",
+    "onoff_ga": "0/0/9",
+    "status_ga": "0/0/10",
+    "supports_brightness": false,
+    "aliases": [
+      "đèn e",
+      "led e",
+      "đèn mưa",
+      "mô phỏng mưa"
+    ],
+    "role": "simulate_rain",
+    "safety_level": "safe_demo",
+    "require_confirm": false,
+    "enabled": true
+  },
+  "den_f": {
+    "name": "Đèn F",
+    "room": "phong_rd",
+    "type": "light",
+    "onoff_ga": "0/0/11",
+    "status_ga": "0/0/12",
+    "supports_brightness": false,
+    "aliases": [
+      "đèn f",
+      "led f",
+      "đèn điều hòa",
+      "mô phỏng điều hòa"
+    ],
+    "role": "simulate_air_conditioner",
+    "safety_level": "safe_demo",
+    "require_confirm": false,
+    "enabled": true
+  },
+  "den_g": {
+    "name": "Đèn G",
+    "room": "phong_rd",
+    "type": "light",
+    "onoff_ga": "0/0/13",
+    "status_ga": "0/0/14",
+    "supports_brightness": false,
+    "aliases": [
+      "đèn g",
+      "led g",
+      "đèn thông gió",
+      "fresh air"
+    ],
+    "role": "simulate_fresh_air",
+    "safety_level": "safe_demo",
+    "require_confirm": false,
+    "enabled": true
+  },
+  "den_h": {
+    "name": "Đèn H",
+    "room": "phong_rd",
+    "type": "light",
+    "onoff_ga": "0/0/100",
+    "status_ga": "0/0/101",
+    "supports_brightness": false,
+    "enabled": true,
+    "aliases": [
+      "đèn h",
+      "led h",
+      "đèn thời tiết mát"
+    ],
+    "role": "simulate_cool_weather",
+    "safety_level": "safe_demo",
+    "require_confirm": false
+  },
+  "g1_den_tran": {
+    "name": "G1 Đèn Trần",
+    "room": "phong_rd",
+    "type": "light",
+    "onoff_ga": "0/1/0",
+    "status_ga": "0/1/1",
+    "brightness_ga": "0/1/2",
+    "brightness_status_ga": "0/1/3",
+    "color_ga": "0/1/4",
+    "color_status_ga": "0/1/5",
+    "supports_brightness": true,
+    "aliases": [
+      "bóng dali",
+      "g1 đèn trần",
+      "ánh sáng ngoài trời",
+      "đèn dali",
+      "đèn g1",
+      "đèn nhiệt độ màu",
+      "đèn trần",
+      "đèn trần dali"
+    ],
+    "role": "simulate_sunlight",
+    "safety_level": "safe_demo",
+    "require_confirm": false,
+    "enabled": true,
+    "supports_color_temperature": true,
+    "color_temp_ga": "0/1/4",
+    "color_temp_status_ga": "0/1/5",
+    "color_temp_min": 1000,
+    "color_temp_max": 10000,
+    "color_temp_dpt": "7.600"
+  },
+  "room_all_on": {
+    "name": "Đèn Ngữ Cảnh 1 (Bật Cụm Phòng)",
+    "room": "phong_rd",
+    "type": "light_group",
+    "onoff_ga": "0/4/0",
+    "supports_brightness": false,
+    "aliases": [
+      "bật cụm đèn phòng",
+      "đèn ngữ cảnh 1",
+      "ngữ cảnh 1",
+      "scene 1"
+    ],
+    "role": "group_control",
+    "safety_level": "safe_demo",
+    "require_confirm": false,
+    "enabled": true,
+    "status": "ready"
+  },
+  "room_all_off": {
+    "name": "Đèn Ngữ Cảnh 2 (Tắt Cụm Phòng)",
+    "room": "phong_rd",
+    "type": "light_group",
+    "onoff_ga": "0/4/2",
+    "supports_brightness": false,
+    "aliases": [
+      "tắt cụm đèn phòng",
+      "đèn ngữ cảnh 2",
+      "ngữ cảnh 2",
+      "scene 2"
+    ],
+    "role": "group_control",
+    "safety_level": "safe_demo",
+    "require_confirm": false,
+    "enabled": true,
+    "status": "ready"
+  }
+}

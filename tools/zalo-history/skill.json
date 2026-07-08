@@ -1,0 +1,16 @@
+{
+  "schema_version": 2,
+  "name": "zalo-history",
+  "description": "Đọc lịch sử tin nhắn trong Group Zalo. Sử dụng tool này khi người dùng yêu cầu tóm tắt (summarize) lịch sử trò chuyện, hỏi xem hôm nay ai nói gì, có nhắc đến việc gì không.",
+  "intents": ["zalo-history"],
+  "run": "python3 /home/an/knx-bridge/tools/zalo-history/main.py",
+  "input": {
+    "type": "object",
+    "properties": {
+      "target_date": { "type": "string", "description": "Ngày muốn xem lịch sử (định dạng YYYY-MM-DD). Nếu để trống sẽ mặc định là hôm nay. Chỉ hỗ trợ trong 7 ngày gần nhất." },
+      "time_period": { "type": "string", "description": "Khung giờ trong ngày: 'morning' (0h-12h), 'afternoon' (12h-18h), 'evening' (18h-24h), hoặc 'all' (cả ngày). Mặc định là 'all'.", "enum": ["morning", "afternoon", "evening", "all"] },
+      "search_query": { "type": "string", "description": "Từ khóa tìm kiếm (Tùy chọn). Dùng để lọc các tin nhắn có chứa từ này." },
+      "limit": { "type": "integer", "description": "Số lượng tin nhắn tối đa cần đọc. Mặc định là 5000." }
+    }
+  }
+}

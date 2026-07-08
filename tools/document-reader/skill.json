@@ -1,0 +1,15 @@
+{
+  "name": "document-reader",
+  "description": "Đọc dữ liệu từ file tài liệu (Google Sheets, PDF, Excel...) và tạo bản nháp (proposal) danh sách thiết bị KNX. DÙNG KỸ NĂNG NÀY khi người dùng gửi link tài liệu và nhờ bạn đọc, bóc tách thiết bị.",
+  "executable": "python3 /home/an/knx-bridge/tools/document-reader/main.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "url": {
+        "type": "string",
+        "description": "Đường dẫn (URL) hoặc đường dẫn file nội bộ tới tài liệu cần đọc."
+      }
+    },
+    "required": ["url"]
+  }
+}

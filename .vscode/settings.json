@@ -1,0 +1,8 @@
+{
+  "python.defaultInterpreterPath": "/home/an/knx-bridge/.venv/bin/python",
+  "python.terminal.activateEnvironment": true,
+  "python.analysis.extraPaths": [
+    "/home/an/knx-bridge/.venv/lib/python3.12/site-packages"
+  ],
+  "pyrefly.interpreter": "/home/an/knx-bridge/.venv/bin/python3.12"
+}
