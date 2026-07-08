@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 API_URL = "http://localhost:8000"
 
 def post_json(path, data):
-    req = urllib.request.Request(API_URL + path, data=json.dumps(data).encode('utf-8'), headers={'Content-Type': 'application/json', 'X-Admin-Token': 'test-admin'})
+    req = urllib.request.Request(API_URL + path, data=json.dumps(data).encode('utf-8'), headers={'Content-Type': 'application/json', 'X-Admin-Token': 'test-admin', 'Authorization': 'Bearer dummy'})
     try:
         with urllib.request.urlopen(req) as response:
             return response.status, json.loads(response.read().decode())
@@ -17,7 +17,7 @@ def post_json(path, data):
         return e.code, json.loads(e.read().decode())
 
 def get_json(path):
-    req = urllib.request.Request(API_URL + path, headers={'X-Admin-Token': 'test-admin'})
+    req = urllib.request.Request(API_URL + path, headers={'X-Admin-Token': 'test-admin', 'Authorization': 'Bearer dummy'})
     try:
         with urllib.request.urlopen(req) as response:
             return response.status, json.loads(response.read().decode())

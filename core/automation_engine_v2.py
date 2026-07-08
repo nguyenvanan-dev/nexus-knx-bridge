@@ -272,6 +272,7 @@ class AutomationEngineV2:
         event_bus: "EventBus",
         state_manager: "StateManager",
         command_pipeline: "CommandPipeline",
+        notify_fn=None,
         scene_fn=None,
     ):
         self._db_path = db_path
@@ -286,7 +287,7 @@ class AutomationEngineV2:
             pipeline=command_pipeline,
             state_manager=state_manager,
             evaluator=self._evaluator,
-            notify_fn=notify_fn,
+            event_bus=event_bus,
             scene_fn=scene_fn,
         )
         self._trigger_manager = TriggerManager(event_bus)

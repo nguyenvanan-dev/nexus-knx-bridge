@@ -1,0 +1,12 @@
+INFO:__main__:Waiting for server to start...
+INFO:__main__:=== 1. Test Skip Mode (Duplicate ID) ===
+INFO:__main__:=== 2. Test Overwrite Mode ===
+INFO:__main__:=== 3. Test Rename Mode ===
+INFO:__main__:Rename failed as expected due to Duplicate GA!
+INFO:__main__:=== 4. Test Duplicate GA Rollback ===
+INFO:__main__:Rollback successful!
+INFO:__main__:=== 5. Test AI Context ===
+INFO:__main__:AI Context sees the imported devices.
+INFO:__main__:=== 6. Test 500 devices import ===
+INFO:__main__:500 devices imported successfully!
+INFO:__main__:ALL TESTS PASSED!

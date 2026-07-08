@@ -1604,9 +1604,9 @@ async def add_device(
     from core.event_bus import DomainEvent, EventType
     if 'event_bus' in globals() and event_bus:
         event_bus.publish(DomainEvent(
-            type=EventType.DEVICE_ADDED,
+            event_type=EventType.DEVICE_ADDED,
             source="DeviceWizard",
-            data={"message": f"Added device {device_id}", "action": "reload_required"}
+            payload={"message": f"Added device {device_id}", "action": "reload_required"}
         ))
 
     return {
@@ -1656,9 +1656,9 @@ async def update_device(
     from core.event_bus import DomainEvent, EventType
     if 'event_bus' in globals() and event_bus:
         event_bus.publish(DomainEvent(
-            type=EventType.DEVICE_ADDED,
+            event_type=EventType.DEVICE_ADDED,
             source="DeviceWizard",
-            data={"message": f"Updated device {device_id}", "action": "reload_required"}
+            payload={"message": f"Updated device {device_id}", "action": "reload_required"}
         ))
 
     return {
@@ -1836,9 +1836,9 @@ async def import_devices(
                 EventType.DEVICE_REGISTRY_UPDATED = "device.registry_updated"
                 
             event_bus.publish(DomainEvent(
-                type=EventType.DEVICE_REGISTRY_UPDATED,
+                event_type=EventType.DEVICE_REGISTRY_UPDATED,
                 source="BulkImport",
-                data={
+                payload={
                     "imported": imported_count,
                     "skipped": skipped_count,
                     "failed": failed_count
@@ -3593,7 +3593,7 @@ async def login(req: LoginRequest):
     
     access_token_expires = timedelta(minutes=auth_utils.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = auth_utils.create_access_token(
-        data={"sub": user["username"], "role": user["role"]}, expires_delta=access_token_expires
+        payload={"sub": user["username"], "role": user["role"]}, expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer", "role": user["role"]}
 

@@ -39,10 +39,10 @@ class DeviceService:
     def get_device_state(self, device_id: str) -> str:
         # self._state_manager.get_state returns just the string state directly usually?
         # Wait, get_state returns Any.
-        state_val = self._state_manager.get_state(device_id)
+        state_val = self._state_manager.get_state_str(device_id)
         return state_val if state_val is not None else "Unknown"
 
     def get_house_mode(self) -> str:
-        state_val = self._state_manager.get_state("sys_house_mode")
+        state_val = self._state_manager.get_state_str("sys_house_mode")
         return state_val if state_val is not None else "Home"
 
