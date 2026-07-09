@@ -1,24 +1,22 @@
-from typing import Dict, Any
+from typing import Dict, Any, Union
 
 class ConflictResolver:
     def resolve(self, 
                 current_request: str, 
-                working_memory: list,
+                working_memory: Union[list, dict],
                 device_state: dict,
                 summary: dict,
-                user_memory: list,
+                user_memory: Union[list, dict],
                 house_memory: dict,
                 automations: list) -> Dict[str, Any]:
         """
         Resolves conflicts between layers based on strict priority:
         Request > Working Memory > Device State > Summary > User Mem > House Mem
         """
-        # For Sprint 10, we simply build the decision graph and return the context as-is.
-        # In the future, this will explicitly filter out contradictory items.
         decision_graph = {
             "winner": "Current User Request",
             "losers": [],
-            "reason": "Default Sprint 10 Strategy: User request wins"
+            "reason": "Default Strategy: User request wins"
         }
         
         return {

@@ -14,6 +14,8 @@ from core.builders.user_memory_builder import UserMemoryBuilder
 from core.builders.conflict_resolver import ConflictResolver
 from core.builders.token_optimizer import TokenOptimizer
 from core.builders.prompt_builder import PromptBuilder
+from core.builders.suggestion_builder import SuggestionBuilder
+from core.builders.predictive_automation import PredictiveAutomationBuilder
 
 if TYPE_CHECKING:
     from core.device_service import DeviceService
@@ -46,6 +48,8 @@ class ContextBuilder:
         self.conflict_resolver = ConflictResolver()
         self.token_optimizer = TokenOptimizer()
         self.prompt_builder = PromptBuilder()
+        self.suggestion_builder = SuggestionBuilder()
+        self.predictive_automation = PredictiveAutomationBuilder()
 
     def save_message(self, session_id: str, role: str, content: str, 
                      platform: str = 'unknown', user_id: str = None, 
@@ -106,6 +110,16 @@ class ContextBuilder:
         
         # 8. Token Budget Optimizer
         optimized_context = self.token_optimizer.optimize(resolved_context["resolved_context"])
+        
+        # Intelligent Suggestions
+        import time
+        current_time_str = time.strftime("%Y-%m-%d %H:%M:%S")
+        suggestions = self.suggestion_builder.build(house_memory, device_state, current_time_str)
+        predictive_suggestions = self.predictive_automation.build(user_memory, current_time_str)
+        
+        all_suggestions = suggestions + predictive_suggestions
+        if all_suggestions:
+            optimized_context["intelligent_suggestions"] = all_suggestions
         
         # Include decision graph in final payload for auditing
         optimized_context["decision_graph"] = resolved_context["decision_graph"]
