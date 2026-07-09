@@ -334,6 +334,7 @@ class ZaloGroupLogCommand(BaseModel):
 
 class AskAICommand(BaseModel):
     text: str
+    session_id: str = "default"
 
 
 class DeviceAddCommand(BaseModel):
@@ -753,6 +754,7 @@ async def startup_event():
     await start_knx()
     asyncio.create_task(fetch_real_weather_loop())
     asyncio.create_task(process_telegrams())
+    asyncio.create_task(_context_builder.queue.start_workers(num_workers=2))
     logger.info("KNX Smart Home Platform v3.1 started")
 
 
@@ -3413,7 +3415,7 @@ async def get_dashboard():
 
 
 @app.get("/api/ai/context")
-async def get_ai_context():
+async def get_ai_context(session_id: str = "default", query: str = ""):
     """
     Endpoint dành riêng cho OpenClaw để kéo (pull) ngữ cảnh ngôi nhà 
     (trạng thái thiết bị, lịch sử sự kiện) trước khi trả lời.
@@ -3422,33 +3424,39 @@ async def get_ai_context():
         return {"error": "Context Builder not initialized"}
     
     import json
-    # build_context() returns a json string, so we load it to return as JSON response
-    return json.loads(_context_builder.build_context())
+    return json.loads(_context_builder.build_context(session_id=session_id, query=query))
 
 @app.post("/api/ask-ai")
 async def ask_ai(request: AskAICommand):
     try:
-        # AI will automatically pull context via /api/ai/context endpoint 
-        # using the rule defined in IDENTITY.md
-        
-        # Pass the message to openclaw CLI to use the agent
+        if _context_builder:
+            _context_builder.save_message(request.session_id, "user", request.text)
+
         cmd = [
             "openclaw", "agent", 
-            "--session-key", "agent:main:dashboard_v2", 
+            "--session-key", request.session_id, 
             "--message", request.text, 
             "--json"
         ]
         
-        # Run process synchronously since openclaw handles its own timeouts
         result = subprocess.run(cmd, capture_output=True, text=True, check=False)
         
         if result.returncode != 0:
-            return {"reply": f"Lỗi AI: {result.stderr}"}
+            reply_text = f"Lỗi AI: {result.stderr}"
+            if _context_builder:
+                _context_builder.save_message(request.session_id, "system", reply_text)
+            return {"reply": reply_text}
             
         try:
-            # Parse OpenClaw output
             data = json.loads(result.stdout)
             reply = data.get("result", {}).get("meta", {}).get("finalAssistantVisibleText", "AI không trả lời được.")
+            
+            # Layer 7: Reason from OpenClaw (if it outputs reason, we log it or parse it, here we assume reply is text)
+            # The architecture requires reasoning, OpenClaw may output it as part of JSON.
+            # Assuming OpenClaw's custom tool calls output reasoning. We just save the visible text.
+            if _context_builder:
+                _context_builder.save_message(request.session_id, "assistant", reply)
+                
             return {"reply": reply}
         except json.JSONDecodeError:
             return {"reply": f"Lỗi định dạng AI: {result.stdout}"}
