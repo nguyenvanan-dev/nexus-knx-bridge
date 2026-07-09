@@ -8,11 +8,14 @@ API_KEY = os.getenv("API_KEY", "knx-secret-key-123")
 class APIKeyMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         if request.method in ["POST", "PUT", "DELETE"]:
-            api_key = request.headers.get("X-API-KEY")
-            if api_key != API_KEY:
-                return JSONResponse(
-                    status_code=401,
-                    content={"detail": "Unauthorized: Invalid or missing X-API-KEY"},
-                )
+            # Bypass API key check for local traffic
+            client_host = request.client.host if request.client else ""
+            if client_host not in ("127.0.0.1", "::1", "localhost"):
+                api_key = request.headers.get("X-API-KEY")
+                if api_key != API_KEY:
+                    return JSONResponse(
+                        status_code=401,
+                        content={"detail": "Unauthorized: Invalid or missing X-API-KEY"},
+                    )
         response = await call_next(request)
         return response
