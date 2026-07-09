@@ -158,6 +158,9 @@ GA_RE = re.compile(r"^\d{1,2}/\d{1,2}/\d{1,3}$")
 
 app = FastAPI(title="KNX Smart Home Platform", version="3.0.0")
 
+from core.security import APIKeyMiddleware
+app.add_middleware(APIKeyMiddleware)
+
 knx_lock = asyncio.Lock()
 _knx_driver: Optional[KNXDriver] = None
 xknx_instance = None # Kept for backward compatibility references
@@ -746,6 +749,8 @@ def _init_domain_layer():
 
 @app.on_event("startup")
 async def startup_event():
+    from core.database_optimizer import optimize_database
+    optimize_database("smarthome.db")
     _init_domain_layer()
     # Serve uploaded floor plan images
     import os

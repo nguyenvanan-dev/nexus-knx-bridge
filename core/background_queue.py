@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Dict, Any, Callable
+from typing import Dict, Any, Callable, List
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -17,6 +17,8 @@ class BackgroundQueue:
         self._workers = []
         self._memory_repo = memory_repo
         self._conversation_repo = conversation_repo
+        self.batch_size = 10
+        self.batch_timeout = 2.0
 
     async def start_workers(self, num_workers: int = 2):
         for i in range(num_workers):
@@ -34,57 +36,100 @@ class BackgroundQueue:
 
     async def _worker_loop(self, worker_id: int):
         while True:
-            task: BackgroundTask = await self._queue.get()
-            if task is None:
-                self._queue.task_done()
-                break
+            batch = []
+            try:
+                # Wait for at least one task
+                first_task = await self._queue.get()
+                if first_task is None:
+                    self._queue.task_done()
+                    break
+                batch.append(first_task)
                 
+                # Try to collect more up to batch_size within batch_timeout
+                end_time = asyncio.get_event_loop().time() + self.batch_timeout
+                while len(batch) < self.batch_size:
+                    timeout = end_time - asyncio.get_event_loop().time()
+                    if timeout <= 0:
+                        break
+                    try:
+                        task = await asyncio.wait_for(self._queue.get(), timeout=timeout)
+                        if task is None:
+                            self._queue.task_done()
+                            # We put it back so other workers can stop too
+                            await self._queue.put(None)
+                            break
+                        batch.append(task)
+                    except asyncio.TimeoutError:
+                        break
+
+                if batch:
+                    await self._process_batch(worker_id, batch)
+
+            except Exception as e:
+                logger.error(f"Worker {worker_id} error in batch collection: {e}")
+            finally:
+                for _ in batch:
+                    self._queue.task_done()
+
+    async def _process_batch(self, worker_id: int, batch: List[BackgroundTask]):
+        logger.info(f"Worker {worker_id} processing batch of {len(batch)} tasks")
+        
+        summaries = []
+        preferences = []
+        
+        for task in batch:
             try:
                 if task.type == 'summary':
-                    await self._process_summary(task)
+                    summary_data = await self._process_summary_logic(task)
+                    if summary_data:
+                        summaries.append(summary_data)
                 elif task.type == 'memory':
-                    await self._process_memory(task)
+                    pref_data = await self._process_memory_logic(task)
+                    if pref_data:
+                        preferences.append(pref_data)
                 else:
                     logger.warning(f"Worker {worker_id} ignoring unknown task type: {task.type}")
             except Exception as e:
                 logger.error(f"Worker {worker_id} error processing task {task.type}: {e}")
-            finally:
-                self._queue.task_done()
 
-    async def _process_summary(self, task: BackgroundTask):
+        # Batch write to DB to save I/O
+        if hasattr(self._memory_repo, 'save_summaries_batch') and summaries:
+            self._memory_repo.save_summaries_batch(summaries)
+        elif summaries:
+            for s in summaries:
+                self._memory_repo.save_summary(**s)
+                
+        if hasattr(self._memory_repo, 'save_preferences_batch') and preferences:
+            self._memory_repo.save_preferences_batch(preferences)
+        elif preferences:
+            for p in preferences:
+                self._memory_repo.save_preference(**p)
+
+    async def _process_summary_logic(self, task: BackgroundTask) -> Dict:
         session_id = task.session_id
-        logger.info(f"[SummaryWorker] Processing summary for {session_id}")
         await asyncio.sleep(0.5) # Simulate LLM call
-        # Mock logic for now
-        self._memory_repo.save_summary(
-            session_id=session_id,
-            summary_text="Ngữ cảnh đã được thu gọn (Mock Queue).",
-            version=1,
-            start_msg="N/A",
-            end_msg="N/A",
-            model="gpt-4o-mini",
-            created_by="SummaryWorker"
-        )
+        return {
+            'session_id': session_id,
+            'summary_text': "Ngữ cảnh đã được thu gọn (Mock Queue).",
+            'version': 1,
+            'start_msg': "N/A",
+            'end_msg': "N/A",
+            'model': "gpt-4o-mini",
+            'created_by': "SummaryWorker"
+        }
 
-    async def _process_memory(self, task: BackgroundTask):
+    async def _process_memory_logic(self, task: BackgroundTask) -> Dict:
         session_id = task.session_id
         content = task.payload.get('content', '')
-        logger.info(f"[MemoryWorker] Extracting memory for {session_id} from content")
         await asyncio.sleep(0.5) # Simulate LLM call
         
-        # Promotion Policy Check (Mock implementation for Sprint 10)
-        # Condition: "Hãy nhớ rằng..." explicitly used, OR repeated >= 3 times, OR preference > 7 days
         if "hãy nhớ" in content.lower():
-            # Explicit instruction -> high confidence
-            self._memory_repo.save_preference(
-                user_id=session_id,
-                key="user_instruction",
-                value=content,
-                importance=5,
-                confidence=0.9,
-                source="user_explicit"
-            )
-            logger.info(f"[MemoryWorker] Promoted explicit memory for {session_id}")
-        else:
-            # Low confidence extraction
-            pass
+            return {
+                'user_id': session_id,
+                'key': "user_instruction",
+                'value': content,
+                'importance': 5,
+                'confidence': 0.9,
+                'source': "user_explicit"
+            }
+        return {}

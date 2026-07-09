@@ -89,3 +89,38 @@ class MemoryRepository:
             conn.close()
         except Exception as e:
             logger.error(f"Error saving preference: {e}")
+
+    def save_summaries_batch(self, summaries: List[Dict]):
+        try:
+            conn = self._get_connection()
+            c = conn.cursor()
+            c.executemany(
+                """INSERT INTO ai_memories 
+                   (user_id, type, key, value, summary_version, source_message_start, source_message_end, model, created_by) 
+                   VALUES (?, 'session_summary', 'summary', ?, ?, ?, ?, ?, ?)""",
+                [(s['session_id'], s['summary_text'], s['version'], s['start_msg'], s['end_msg'], s['model'], s['created_by']) for s in summaries]
+            )
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            logger.error(f"Error saving summaries batch: {e}")
+
+    def save_preferences_batch(self, preferences: List[Dict]):
+        try:
+            conn = self._get_connection()
+            c = conn.cursor()
+            for p in preferences:
+                c.execute('''
+                    UPDATE ai_memories 
+                    SET value = ?, importance = ?, confidence = ?, source = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE user_id = ? AND type = 'preference' AND key = ?
+                ''', (p['value'], p['importance'], p['confidence'], p['source'], p['user_id'], p['key']))
+                if c.rowcount == 0:
+                    c.execute('''
+                        INSERT INTO ai_memories (user_id, type, key, value, importance, confidence, source)
+                        VALUES (?, 'preference', ?, ?, ?, ?, ?)
+                    ''', (p['user_id'], p['key'], p['value'], p['importance'], p['confidence'], p['source']))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            logger.error(f"Error saving preferences batch: {e}")
