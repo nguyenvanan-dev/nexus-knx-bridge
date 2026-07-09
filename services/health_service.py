@@ -9,6 +9,11 @@ import time
 import asyncio
 from typing import TYPE_CHECKING, Optional
 
+try:
+    from config import DEVICE_OFFLINE_TIMEOUT
+except ImportError:
+    DEVICE_OFFLINE_TIMEOUT = 300
+
 if TYPE_CHECKING:
     from core.state_manager import StateManager
     from core.device_registry import DeviceRegistry
@@ -49,20 +54,114 @@ class HealthService:
 
     async def get_detail(self) -> dict:
         """Trả về toàn bộ health metrics."""
-        import psutil
+        import os
+        import subprocess
+        from datetime import datetime
+
+        # API Version & Build Info
         try:
-            cpu = psutil.cpu_percent(interval=0.1)
-            mem = psutil.virtual_memory()
-            mem_mb = round(mem.used / 1024 / 1024, 1)
-            mem_total_mb = round(mem.total / 1024 / 1024, 1)
+            git_commit = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], stderr=subprocess.DEVNULL).decode('utf-8').strip()
         except Exception:
-            cpu = -1
-            mem_mb = -1
-            mem_total_mb = -1
+            git_commit = "unknown"
+        
+        build_time = "2026-07-09T10:15:00Z" # Dummy fallback
+        try:
+            build_time = subprocess.check_output(["git", "log", "-1", "--format=%cI"], stderr=subprocess.DEVNULL).decode('utf-8').strip()
+        except Exception:
+            pass
+
+        # Read CPU / Load Average without psutil
+        try:
+            load1, load5, load15 = os.getloadavg()
+            cpu_percent = round(load1 / os.cpu_count() * 100, 1)
+        except Exception:
+            cpu_percent = -1
+
+        # Read Mem from /proc/meminfo
+        mem_mb = -1
+        mem_total_mb = -1
+        try:
+            with open('/proc/meminfo', 'r') as f:
+                meminfo = f.read()
+            total_kb = 0
+            free_kb = 0
+            avail_kb = 0
+            for line in meminfo.splitlines():
+                if line.startswith('MemTotal:'):
+                    total_kb = int(line.split()[1])
+                elif line.startswith('MemFree:'):
+                    free_kb = int(line.split()[1])
+                elif line.startswith('MemAvailable:'):
+                    avail_kb = int(line.split()[1])
+            
+            if total_kb > 0:
+                mem_total_mb = round(total_kb / 1024, 1)
+                # Use MemAvailable if present, else fallback to MemFree
+                used_kb = total_kb - (avail_kb if avail_kb > 0 else free_kb)
+                mem_mb = round(used_kb / 1024, 1)
+        except Exception:
+            pass
+
+        # Process Memory (Resident Set Size) from /proc/self/statm
+        process_mem_mb = -1
+        try:
+            with open('/proc/self/statm', 'r') as f:
+                pages = int(f.read().split()[1])
+                page_size = os.sysconf('SC_PAGE_SIZE')
+                process_mem_mb = round((pages * page_size) / 1024 / 1024, 1)
+        except Exception:
+            pass
+
+        # Offline devices (Not updated in 2 hours = 7200s, or never updated)
+        offline_devices = []
+        now = time.time()
+        for d in self._registry.get_all():
+            did = d["id"]
+            state = self._state.get(did)
+            if state:
+                age = now - state.last_update
+                if age > DEVICE_OFFLINE_TIMEOUT:
+                    offline_devices.append({
+                        "id": did,
+                        "name": d.get("name", did),
+                        "room": d.get("room", "Unknown"),
+                        "last_update_age_s": round(age),
+                        "status": "Offline"
+                    })
+            else:
+                # Never reported
+                offline_devices.append({
+                    "id": did,
+                    "name": d.get("name", did),
+                    "room": d.get("room", "Unknown"),
+                    "last_update_age_s": None,
+                    "status": "No Data"
+                })
+
+        # Recent Logs (Read using tail)
+        recent_logs = []
+        try:
+            tail_output = subprocess.check_output(["tail", "-n", "20", "backend.log"], stderr=subprocess.DEVNULL)
+            recent_logs = tail_output.decode('utf-8').splitlines()
+        except Exception:
+            recent_logs = ["Log file backend.log not found or empty."]
 
         knx_status = self._get_knx_status()
 
+        # Overall Status
+        overall_status = "HEALTHY"
+        if not knx_status.get("connected") or process_mem_mb == -1:
+            overall_status = "ERROR"
+        elif len(offline_devices) > 0:
+            overall_status = "WARNING"
+
         return {
+            "version": {
+                "version": "v0.9.0",
+                "git_commit": git_commit,
+                "build_time": build_time,
+            },
+            "overall_status": overall_status,
             "knx": {
                 **knx_status,
                 "last_telegram_at": self._last_telegram_at,
@@ -87,8 +186,11 @@ class HealthService:
             "automation_engine": self._automation.get_stats(),
             "system": {
                 "uptime_seconds": round(time.time() - self._startup_time),
-                "cpu_percent": cpu,
+                "cpu_percent": cpu_percent,
                 "mem_used_mb": mem_mb,
                 "mem_total_mb": mem_total_mb,
+                "process_mem_mb": process_mem_mb,
             },
+            "offline_devices": offline_devices,
+            "recent_logs": recent_logs,
         }

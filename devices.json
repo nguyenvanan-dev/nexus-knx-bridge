@@ -9249,5 +9249,41 @@
     "safety_level": null,
     "require_confirm": false,
     "enabled": true
+  },
+  "test_motion": {
+    "device_id": "test_motion",
+    "name": "Motion",
+    "room": null,
+    "type": "sensor",
+    "onoff_ga": null,
+    "status_ga": "9/9/1",
+    "supports_brightness": false,
+    "brightness_ga": null,
+    "brightness_status_ga": null,
+    "color_ga": null,
+    "color_status_ga": null,
+    "role": null,
+    "aliases": [],
+    "safety_level": null,
+    "require_confirm": false,
+    "enabled": true
+  },
+  "test_light": {
+    "device_id": "test_light",
+    "name": "Light",
+    "room": null,
+    "type": "light",
+    "onoff_ga": "9/9/2",
+    "status_ga": null,
+    "supports_brightness": false,
+    "brightness_ga": null,
+    "brightness_status_ga": null,
+    "color_ga": null,
+    "color_status_ga": null,
+    "role": null,
+    "aliases": [],
+    "safety_level": null,
+    "require_confirm": false,
+    "enabled": true
   }
 }

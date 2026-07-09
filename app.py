@@ -719,6 +719,11 @@ def _init_domain_layer():
             "gateway": f"{KNX_GATEWAY_IP}:{KNX_GATEWAY_PORT}",
             "knx_gateway_ip": KNX_GATEWAY_IP,
             "knx_gateway_port": KNX_GATEWAY_PORT,
+            "tunnel_state": _knx_driver.tunnel_state if _knx_driver else "DISCONNECTED",
+            "interface_ip": _knx_driver.gateway_ip if _knx_driver else KNX_GATEWAY_IP,
+            "interface_port": _knx_driver.gateway_port if _knx_driver else KNX_GATEWAY_PORT,
+            "reconnect_count": _knx_driver.reconnect_count if _knx_driver else 0,
+            "connection_time": _knx_driver.connection_time if _knx_driver else None,
         }
 
     _health_service = HealthService(

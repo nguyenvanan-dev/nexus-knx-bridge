@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import socket
+import time
 from typing import Any, Callable, Optional
 
 from xknx import XKNX
@@ -43,6 +44,10 @@ class KNXDriver(BaseDriver):
             
         self._xknx: Optional[XKNX] = None
         self._lock = asyncio.Lock()
+        
+        self.connection_time: Optional[float] = None
+        self.reconnect_count: int = 0
+        self.tunnel_state: str = "DISCONNECTED"
 
     async def start(self) -> None:
         """Bắt đầu kết nối KNX."""
@@ -65,9 +70,13 @@ class KNXDriver(BaseDriver):
             try:
                 await inst.start()
                 self._xknx = inst
+                self.connection_time = time.time()
+                self.reconnect_count += 1
+                self.tunnel_state = "CONNECTED"
                 logger.info(f"KNX tunnel started to {self.gateway_ip}:{self.gateway_port}")
             except Exception as exc:
                 self._xknx = None
+                self.tunnel_state = "ERROR"
                 logger.error(f"KNX tunnel start failed: {type(exc).__name__}: {exc}")
 
     async def stop(self) -> None:
@@ -81,6 +90,7 @@ class KNXDriver(BaseDriver):
                     logger.error(f"Error stopping KNX tunnel: {e}")
                 finally:
                     self._xknx = None
+                    self.tunnel_state = "DISCONNECTED"
 
     async def _internal_telegram_cb(self, telegram: Telegram):
         """Nhận telegram từ xknx và đẩy lên qua callback đã đăng ký."""

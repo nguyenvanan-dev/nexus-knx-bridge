@@ -104,6 +104,7 @@ class EventBus:
         self._wildcard_subscribers: list[Handler] = []  # subscribe("*", handler)
         self._published_count: int = 0
         self._error_count: int = 0
+        self._last_event: Optional[dict] = None
 
     def subscribe(self, event_type: str, handler: Handler):
         """
@@ -131,6 +132,11 @@ class EventBus:
         Handlers lỗi được bắt và log, không làm dừng các handlers khác.
         """
         self._published_count += 1
+        self._last_event = {
+            "type": event.event_type,
+            "timestamp": event.timestamp,
+            "device_id": event.device_id
+        }
 
         handlers = list(self._subscribers.get(event.event_type, []))
         handlers += self._wildcard_subscribers
@@ -162,4 +168,5 @@ class EventBus:
             "error_total": self._error_count,
             "subscriber_count": self.subscriber_count(),
             "event_types_with_subscribers": list(self._subscribers.keys()),
+            "last_event": self._last_event,
         }
