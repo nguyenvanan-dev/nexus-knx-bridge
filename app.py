@@ -1177,7 +1177,7 @@ async def reload_platform():
     }
 
 @app.get("/platform/state-manager")
-async def get_state_manager_snapshot():
+async def getstate_manager_snapshot():
     """Get a full snapshot of StateManager for debugging."""
     return state_manager.get_snapshot()
 
@@ -1455,6 +1455,18 @@ class AutomationRuleV2Command(BaseModel):
     max_runs_per_day: int = 0
 
 
+def audit_log(who: str, command_id: str, device_id: str, action: str, old_value: str, new_value: str, priority: int, result: str, reason: str, latency_ms: int):
+    conn = sqlite3.connect(str(_SMARTHOME_DB))
+    conn.execute('''
+        INSERT INTO command_audit (
+            who, device_id, action, new_value, result, timestamp
+        ) VALUES (?, ?, ?, ?, ?, ?)
+    ''', (
+        who, device_id, action, new_value, result, time.time()
+    ))
+    conn.commit()
+    conn.close()
+
 @app.get("/automation/rules/v2")
 async def get_automation_rules_v2():
     """Get all automation rules (v2 schema with full conditions/actions)."""
@@ -1463,9 +1475,40 @@ async def get_automation_rules_v2():
     return {"rules": _automation_engine.get_all_rules_from_db()}
 
 
+def validate_automation_rule_v2(cmd: AutomationRuleV2Command):
+    if not cmd.name or not cmd.name.strip():
+        raise HTTPException(status_code=400, detail="Rule name cannot be empty")
+    
+    if not cmd.trigger or "type" not in cmd.trigger:
+        raise HTTPException(status_code=400, detail="Trigger is required")
+        
+    if not cmd.actions or len(cmd.actions) == 0:
+        raise HTTPException(status_code=400, detail="At least one action is required")
+        
+    # Validate Trigger
+    if cmd.trigger.get("type") == "device_state":
+        dev_id = cmd.trigger.get("device_id")
+        if dev_id and dev_id not in DEVICES:
+            raise HTTPException(status_code=400, detail=f"Trigger device '{dev_id}' not found")
+            
+    # Validate Actions & Infinite Loop
+    trigger_dev_id = cmd.trigger.get("device_id") if cmd.trigger.get("type") == "device_state" else None
+    for act in cmd.actions:
+        if act.get("type") == "control":
+            dev_id = act.get("device_id")
+            if dev_id and dev_id not in DEVICES:
+                raise HTTPException(status_code=400, detail=f"Action device '{dev_id}' not found")
+            if dev_id and dev_id == trigger_dev_id:
+                raise HTTPException(status_code=400, detail=f"Rule cannot trigger and control the same device '{dev_id}' directly (infinite loop protection)")
+        elif act.get("type") not in ["control", "activate_scene", "delay", "wait_for", "set_var", "notify", "repeat", "if_action"]:
+            raise HTTPException(status_code=400, detail=f"Invalid action type '{act.get('type')}'")
+
 @app.post("/automation/rules/v2")
-async def create_automation_rule_v2(cmd: AutomationRuleV2Command):
+async def create_automation_rule_v2(cmd: AutomationRuleV2Command, request: Request):
     """Create or update a rule (v2 schema)."""
+    check_auth(request.headers.get("Authorization") or request.headers.get("x-knx-token"))
+    validate_automation_rule_v2(cmd)
+    
     rule_id = cmd.rule_id or str(uuid.uuid4())[:8]
     conn = sqlite3.connect(str(_SMARTHOME_DB))
     conn.execute("""
@@ -1484,6 +1527,14 @@ async def create_automation_rule_v2(cmd: AutomationRuleV2Command):
     ))
     conn.commit()
     conn.close()
+    
+    # Audit log
+    audit_log(
+        who="admin", command_id=rule_id, device_id="AUTOMATION", action="CREATE_OR_UPDATE_RULE",
+        old_value="", new_value=cmd.name, priority=50, result="SUCCESS", reason="Automation rule created or updated",
+        latency_ms=0
+    )
+    
     if _automation_engine:
         _automation_engine.load_rules()
     return {"ok": True, "rule_id": rule_id}
@@ -1496,35 +1547,62 @@ async def update_automation_rule_v2(rule_id: str, cmd: AutomationRuleV2Command):
 
 
 @app.delete("/automation/rules/v2/{rule_id}")
-async def delete_automation_rule_v2(rule_id: str):
+async def delete_automation_rule_v2(rule_id: str, request: Request):
+    check_auth(request.headers.get("Authorization") or request.headers.get("x-knx-token"))
     conn = sqlite3.connect(str(_SMARTHOME_DB))
     conn.execute("DELETE FROM automation_rules_v2 WHERE rule_id=?", (rule_id,))
     conn.commit()
     conn.close()
+    
+    audit_log(
+        who="admin", command_id=rule_id, device_id="AUTOMATION", action="DELETE_RULE",
+        old_value=rule_id, new_value="", priority=50, result="SUCCESS", reason="Rule deleted", latency_ms=0
+    )
+    
     if _automation_engine:
         _automation_engine.load_rules()
     return {"ok": True, "deleted": rule_id}
 
 
 @app.put("/automation/rules/v2/{rule_id}/toggle")
-async def toggle_automation_rule_v2(rule_id: str):
+async def toggle_automation_rule_v2(rule_id: str, request: Request):
+    check_auth(request.headers.get("Authorization") or request.headers.get("x-knx-token"))
     conn = sqlite3.connect(str(_SMARTHOME_DB))
+    row = conn.execute("SELECT enabled FROM automation_rules_v2 WHERE rule_id=?", (rule_id,)).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Rule not found")
+        
+    new_status = not bool(row[0])
     conn.execute(
-        "UPDATE automation_rules_v2 SET enabled=NOT enabled, updated_at=? WHERE rule_id=?",
-        (time.time(), rule_id)
+        "UPDATE automation_rules_v2 SET enabled=?, updated_at=? WHERE rule_id=?",
+        (new_status, time.time(), rule_id)
     )
     conn.commit()
     conn.close()
+    
+    audit_log(
+        who="admin", command_id=rule_id, device_id="AUTOMATION", action="TOGGLE_RULE",
+        old_value=str(not new_status), new_value=str(new_status), priority=50, result="SUCCESS", reason="Rule toggled", latency_ms=0
+    )
+    
     if _automation_engine:
         _automation_engine.load_rules()
     return {"ok": True}
 
 
+class RuleTestCommand(BaseModel):
+    dry_run: bool = False
+
 @app.post("/automation/rules/v2/{rule_id}/test")
-async def test_automation_rule_v2(rule_id: str):
+async def test_automation_rule_v2(rule_id: str, request: Request, cmd: RuleTestCommand = None):
     """Manually trigger a rule (for testing)."""
+    check_auth(request.headers.get("Authorization") or request.headers.get("x-knx-token"))
     if _automation_engine is None:
         raise HTTPException(status_code=503, detail="Automation engine not ready")
+        
+    dry_run = cmd.dry_run if cmd else False
+    
     rule = next((r for r in _automation_engine._rules if r.rule_id == rule_id), None)
     if rule is None:
         # Try to load from DB
@@ -1536,11 +1614,32 @@ async def test_automation_rule_v2(rule_id: str):
             raise HTTPException(status_code=404, detail="Rule not found")
         rule = RuleV2.from_row(dict(row))
 
+    if not rule.enabled and not dry_run:
+        raise HTTPException(status_code=400, detail="Cannot test a disabled rule unless in dry_run mode")
+
     original_cooldown = rule.cooldown_seconds
     rule.cooldown_seconds = 0  # Bypass cooldown for test
+    
+    audit_log(
+        who="admin", command_id=rule_id, device_id="AUTOMATION", action="TEST_RULE",
+        old_value="dry_run" if dry_run else "execute", new_value="", priority=50, result="SUCCESS", reason="Testing rule", latency_ms=0
+    )
+    
     try:
-        await _automation_engine._fire_rule(rule, None)
-        return {"ok": True, "rule_id": rule_id, "message": "Rule fired successfully"}
+        if dry_run:
+            from core.rule_evaluator import RuleEvaluator
+            cond_eval = RuleEvaluator(state_manager)
+            passed = cond_eval.evaluate(rule.conditions)
+            return {
+                "ok": True,
+                "rule_id": rule_id,
+                "message": "Dry Run Result",
+                "condition_passed": passed,
+                "would_execute": rule.actions if passed else []
+            }
+        else:
+            await _automation_engine._fire_rule(rule, None)
+            return {"ok": True, "rule_id": rule_id, "message": "Rule fired successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:

@@ -575,10 +575,18 @@ function RuleCard({ rule, onEdit, onDelete, onToggle, onTest, testLoading }) {
         </div>
 
         <div className="flex items-center gap-2 flex-shrink-0">
-          <button onClick={() => onTest(rule.rule_id)} disabled={testLoading === rule.rule_id}
-            className="px-3 py-1.5 text-xs bg-gray-800 text-gray-300 border border-gray-700 rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50">
-            {testLoading === rule.rule_id ? '⏳' : '▶ Test'}
-          </button>
+          <div className="flex bg-gray-800 rounded-lg overflow-hidden border border-gray-700">
+            <button onClick={() => onTest(rule.rule_id, true)} disabled={testLoading === rule.rule_id}
+              title="Dry Run (Check conditions without executing actions)"
+              className="px-3 py-1.5 text-xs text-blue-400 hover:bg-gray-700 transition-colors disabled:opacity-50 border-r border-gray-700">
+              {testLoading === rule.rule_id ? '⏳' : '🔍 Dry Run'}
+            </button>
+            <button onClick={() => onTest(rule.rule_id, false)} disabled={testLoading === rule.rule_id}
+              title="Execute Action (Skip conditions & run actions)"
+              className="px-3 py-1.5 text-xs text-red-400 hover:bg-gray-700 transition-colors disabled:opacity-50">
+              {testLoading === rule.rule_id ? '⏳' : '▶ Execute'}
+            </button>
+          </div>
           <button onClick={() => onToggle(rule.rule_id)}
             className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${rule.enabled ? 'bg-gray-800 text-yellow-400 border-yellow-500/30 hover:bg-yellow-500/10' : 'bg-gray-800 text-green-400 border-green-500/30 hover:bg-green-500/10'}`}>
             {rule.enabled ? 'Disable' : 'Enable'}
@@ -639,9 +647,11 @@ export default function AutomationPage() {
       setIsCreating(false);
       await loadRules();
     } catch (e) {
+      console.error(e);
       showToast(`Error: ${e.message}`, 'error');
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
   const handleDelete = async (ruleId) => {
@@ -656,13 +666,34 @@ export default function AutomationPage() {
     loadRules();
   };
 
-  const handleTest = async (ruleId) => {
+  const handleTest = async (ruleId, dryRun = false) => {
     setTestLoading(ruleId);
-    const res = await fetch(`/api/automation2/${ruleId}/test`, { method: 'POST' });
-    const data = await res.json();
-    showToast(data.ok ? '✓ Rule fired successfully' : `Error: ${data.detail}`, data.ok ? 'success' : 'error');
+    try {
+      const res = await fetch(`/api/automation2/${ruleId}/test`, { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dry_run: dryRun })
+      });
+      const data = await res.json();
+      
+      if (!res.ok) {
+        showToast(`Error: ${data.detail}`, 'error');
+      } else {
+        if (dryRun) {
+          if (data.condition_passed) {
+             showToast(`✓ Dry Run: Passed. Actions would execute.`, 'success');
+          } else {
+             showToast(`⚠ Dry Run: Failed. Actions skipped.`, 'error');
+          }
+        } else {
+          showToast('✓ Rule fired successfully', 'success');
+        }
+      }
+    } catch (e) {
+      showToast(`Request failed`, 'error');
+    }
     setTestLoading(null);
-    setTimeout(loadRules, 1000);
+    if (!dryRun) setTimeout(loadRules, 1000);
   };
 
   const filteredRules = rules.filter(r =>

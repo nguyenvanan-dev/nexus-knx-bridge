@@ -2,7 +2,9 @@ const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5055';
 
 export async function GET() {
   const res = await fetch(`${BACKEND}/automation/rules/v2`);
-  return Response.json(await res.json());
+  const text = await res.text();
+  try { return Response.json(JSON.parse(text), { status: res.status }); }
+  catch { return Response.json({ error: text }, { status: res.status }); }
 }
 
 export async function POST(request) {
@@ -12,5 +14,7 @@ export async function POST(request) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  return Response.json(await res.json());
+  const text = await res.text();
+  try { return Response.json(JSON.parse(text), { status: res.status }); }
+  catch { return Response.json({ error: text }, { status: res.status }); }
 }
