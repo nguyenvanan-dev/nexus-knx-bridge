@@ -19,6 +19,7 @@ logs/
 backups/
 tmp_knxproj/
 *.pid
+*.db.bak*
 
 # Secrets / credentials
 .env
@@ -33,3 +34,4 @@ frontend/.next/
 frontend/node_modules/
 frontend/*.pid
 frontend/*.log
+scenes.json
