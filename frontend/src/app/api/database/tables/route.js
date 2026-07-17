@@ -12,7 +12,7 @@ export async function GET() {
     const authHeaders = token ? { 'Authorization': `Bearer ${token}` } : {};
   try {
     const res = await fetch(`${BACKEND_URL}/api/database/tables`, { 
-      headers: HEADERS,
+      headers: { ...HEADERS, ...authHeaders },
       cache: 'no-store' 
     });
     const data = await res.json();

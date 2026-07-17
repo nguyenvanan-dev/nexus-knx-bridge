@@ -1,82 +1,86 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import styles from "./page.module.css";
+import { useState } from 'react';
+import styles from './page.module.css';
 
 export default function Login() {
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const router = useRouter();
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    setLoading(true);
-    setError("");
-
+    setError('');
+    
     try {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
       });
-
+      
       if (res.ok) {
-        // Redirect to dashboard
-        router.push("/");
-        router.refresh();
+        window.location.href = '/';
       } else {
         const data = await res.json();
-        setError(data.error || "Login failed. Please check your credentials.");
+        setError(data.error || 'Login failed');
       }
     } catch (err) {
-      setError("Network error. Please try again later.");
-    } finally {
-      setLoading(false);
+      setError('Network error');
     }
   };
 
   return (
-    <div className={styles.container}>
-      <div className={styles.loginBox}>
-        <h1 className={styles.title}>Nexus Dashboard</h1>
-        <p className={styles.subtitle}>Enter your credentials to continue</p>
-
-        {error && <div className={styles.error}>{error}</div>}
-
-        <form onSubmit={handleLogin} className={styles.form}>
-          <div className={styles.inputGroup}>
-            <label htmlFor="username">Username</label>
-            <input
-              id="username"
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              required
-              disabled={loading}
-              placeholder="e.g. admin"
-            />
+    <div className={styles.splitContainer}>
+      {/* Left Side: Branding / Abstract Gradient (Hidden on Mobile) */}
+      <div className={`${styles.brandSection} desktop-only`}>
+        <div className={styles.brandOverlay}>
+          <div className={styles.brandContent}>
+            <h1 className="gradient-text" style={{ fontSize: '3rem', fontWeight: '800' }}>NEXUS</h1>
+            <p style={{ fontSize: '1.2rem', color: 'rgba(255,255,255,0.8)' }}>
+              Intelligent Smart Home Command Center
+            </p>
           </div>
-
-          <div className={styles.inputGroup}>
-            <label htmlFor="password">Password</label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              disabled={loading}
-              placeholder="••••••••"
-            />
+        </div>
+      </div>
+      
+      {/* Right Side: Login Form */}
+      <div className={styles.formSection}>
+        <div className={styles.loginBox}>
+          <div className={styles.logo}>
+            <h2 className="gradient-text">Welcome Back</h2>
           </div>
-
-          <button type="submit" className={styles.submitBtn} disabled={loading}>
-            {loading ? "Authenticating..." : "Login"}
-          </button>
-        </form>
+          
+          <form onSubmit={handleLogin}>
+            {error && <div className={styles.error}>{error}</div>}
+            
+            <div className={styles.inputGroup}>
+              <label>Username</label>
+              <input
+                type="text"
+                placeholder="admin"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+              />
+            </div>
+            
+            <div className={styles.inputGroup}>
+              <label>Password</label>
+              <input
+                type="password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </div>
+            
+            <button type="submit" className={styles.submitBtn}>
+              Sign In
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   );

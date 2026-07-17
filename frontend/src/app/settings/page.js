@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
+import { showDialog, showToast } from '../../utils/ui';
 
 export default function SettingsPage() {
   const [logs, setLogs] = useState('');
@@ -20,6 +21,9 @@ export default function SettingsPage() {
   
   // Restore state
   const [restoring, setRestoring] = useState(false);
+  
+  // Tab State
+  const [activeTab, setActiveTab] = useState('system'); // 'system', 'users', 'config'
   
   const fetchLogs = async () => {
     setLoadingLogs(true);
@@ -71,7 +75,10 @@ export default function SettingsPage() {
 
   const handleCreateUser = async (e) => {
       e.preventDefault();
-      if (!newUser.username || !newUser.password) return alert("Please fill username and password");
+      if (!newUser.username || !newUser.password) {
+          showDialog("Validation Error", "Please fill username and password", "warning");
+          return;
+      }
       try {
           const res = await fetch('/api/users', {
               method: 'POST',
@@ -80,30 +87,32 @@ export default function SettingsPage() {
           });
           const data = await res.json();
           if (res.ok) {
-              alert("User created successfully");
+              showToast("User created successfully", "success");
               setNewUser({ username: '', password: '', role: 'Member' });
               fetchUsers();
           } else {
-              alert(data.error || data.detail || "Failed to create user");
+              showDialog("Error", data.error || data.detail || "Failed to create user", "danger");
           }
       } catch (e) {
-          alert("Error creating user: " + e.message);
+          showDialog("Error", "Error creating user: " + e.message, "danger");
       }
   };
 
   const handleDeleteUser = async (id) => {
-      if (!confirm("Are you sure you want to delete this user?")) return;
-      try {
-          const res = await fetch(`/api/users?id=${id}`, { method: 'DELETE' });
-          if (res.ok) {
-              fetchUsers();
-          } else {
-              const data = await res.json();
-              alert(data.error || data.detail || "Failed to delete user");
+      showDialog("Delete User", "Are you sure you want to delete this user?", "danger", async () => {
+          try {
+              const res = await fetch(`/api/users?id=${id}`, { method: 'DELETE' });
+              if (res.ok) {
+                  showToast("User deleted successfully", "success");
+                  fetchUsers();
+              } else {
+                  const data = await res.json();
+                  showDialog("Error", data.error || data.detail || "Failed to delete user", "danger");
+              }
+          } catch (e) {
+              showDialog("Error", "Error deleting user: " + e.message, "danger");
           }
-      } catch (e) {
-          alert("Error deleting user: " + e.message);
-      }
+      });
   };
 
   const fetchConfigs = async () => {
@@ -138,12 +147,12 @@ export default function SettingsPage() {
           });
           const data = await res.json();
           if (res.ok) {
-              alert(data.message || "Configuration updated");
+              showToast(data.message || "Configuration updated", "success");
           } else {
-              alert(data.error || data.detail || "Failed to update configuration");
+              showDialog("Error", data.error || data.detail || "Failed to update configuration", "danger");
           }
       } catch (e) {
-          alert("Error saving config: " + e.message);
+          showDialog("Error", "Error saving config: " + e.message, "danger");
       } finally {
           setSavingConfig(false);
       }
@@ -158,57 +167,74 @@ export default function SettingsPage() {
   const handleRestore = async (e) => {
       const file = e.target.files[0];
       if (!file) return;
-      if (!file.name.endsWith('.zip')) return alert('Please upload a .zip file');
-      if (!confirm('This will overwrite the current database and configuration. The system will restart. Proceed?')) return;
-      
-      setRestoring(true);
-      const formData = new FormData();
-      formData.append('file', file);
-      
-      try {
-          const res = await fetch('/api/system/restore', {
-              method: 'POST',
-              body: formData
-          });
-          const data = await res.json();
-          if (res.ok) {
-              alert(data.message || 'System restored. Restarting...');
-              setTimeout(() => window.location.reload(), 3000);
-          } else {
-              alert(data.error || data.detail || 'Failed to restore system');
-          }
-      } catch (e) {
-          alert('Error restoring system: ' + e.message);
-      } finally {
-          setRestoring(false);
-          e.target.value = ''; // Reset file input
+      if (!file.name.endsWith('.zip')) {
+          showDialog("Invalid File", "Please upload a .zip file", "warning");
+          return;
       }
+      
+      showDialog(
+          "Restore System", 
+          "This will overwrite the current database and configuration. The system will restart. Proceed?", 
+          "danger", 
+          async () => {
+              setRestoring(true);
+              const formData = new FormData();
+              formData.append('file', file);
+              
+              try {
+                  const res = await fetch('/api/system/restore', {
+                      method: 'POST',
+                      body: formData
+                  });
+                  const data = await res.json();
+                  if (res.ok) {
+                      showToast(data.message || 'System restored. Restarting...', "success");
+                      setTimeout(() => window.location.reload(), 3000);
+                  } else {
+                      showDialog("Restore Failed", data.error || data.detail || 'Failed to restore system', "danger");
+                  }
+              } catch (e) {
+                  showDialog("Restore Error", 'Error restoring system: ' + e.message, "danger");
+              } finally {
+                  setRestoring(false);
+                  e.target.value = ''; // Reset file input
+              }
+          }
+      );
   };
 
+  /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
   useEffect(() => {
     fetchLogs();
     fetchUser();
   }, [logService]);
+  /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 
   const handleRestart = async (serviceName) => {
-    if (!confirm(`Are you sure you want to restart ${serviceName}?`)) return;
-    setRestarting(true);
-    try {
-      const res = await fetch('/api/system/restart', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ service: serviceName })
-      });
-      const data = await res.json();
-      alert(data.message || 'Restart command sent');
-      if (serviceName === logService) {
-        setTimeout(fetchLogs, 2000);
-      }
-    } catch (e) {
-      alert(`Error restarting: ${e.message}`);
-    } finally {
-      setRestarting(false);
-    }
+    showDialog(
+        "Restart Service", 
+        `Are you sure you want to restart ${serviceName}?`, 
+        "warning", 
+        async () => {
+            setRestarting(true);
+            try {
+              const res = await fetch('/api/system/restart', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ service: serviceName })
+              });
+              const data = await res.json();
+              showToast(data.message || 'Restart command sent', "success");
+              if (serviceName === logService) {
+                setTimeout(fetchLogs, 2000);
+              }
+            } catch (e) {
+              showDialog("Error", `Error restarting: ${e.message}`, "danger");
+            } finally {
+              setRestarting(false);
+            }
+        }
+    );
   };
 
   const handleDownloadBackup = () => {
@@ -217,16 +243,45 @@ export default function SettingsPage() {
   };
 
   return (
-    <>
-      <header style={{ marginBottom: '24px' }}>
-        <h2 style={{ fontSize: '1.5rem', fontWeight: '600' }}>System Settings & Administration</h2>
-        <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>Quản lý tiến trình, Backup dữ liệu và xem Logs</p>
+    <div className="page-container animate-fade-in flex flex-col h-full max-h-full">
+      <header className="mb-8 shrink-0">
+        <h2 className="text-2xl font-semibold mb-1 text-[var(--text-primary)]">System Settings & Administration</h2>
+        <p className="text-sm text-[var(--text-secondary)]">Quản lý tiến trình, Backup dữ liệu, User và xem Logs</p>
       </header>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px' }}>
-        
-        {/* Backup & Restore Panel */}
-        <div className="glass-panel" style={{ padding: '20px' }}>
+      {/* Tabs Navigation */}
+      <div className="flex gap-3 mb-10 shrink-0 overflow-x-auto custom-scrollbar pb-2">
+        <button 
+            className={`px-5 py-2.5 rounded-full font-medium transition-all whitespace-nowrap flex items-center gap-2 ${activeTab === 'system' ? 'bg-[var(--accent)] text-white shadow-lg' : 'bg-[rgba(255,255,255,0.05)] text-[var(--text-secondary)] hover:bg-[rgba(255,255,255,0.1)] hover:text-white'}`}
+            onClick={() => setActiveTab('system')}
+        >
+            General System
+        </button>
+        {currentUser?.role === 'Admin' && (
+            <>
+                <button 
+                    className={`px-5 py-2.5 rounded-full font-medium transition-all whitespace-nowrap flex items-center gap-2 ${activeTab === 'users' ? 'bg-[var(--accent)] text-white shadow-lg' : 'bg-[rgba(255,255,255,0.05)] text-[var(--text-secondary)] hover:bg-[rgba(255,255,255,0.1)] hover:text-white'}`}
+                    onClick={() => setActiveTab('users')}
+                >
+                    User Management
+                </button>
+                <button 
+                    className={`px-5 py-2.5 rounded-full font-medium transition-all whitespace-nowrap flex items-center gap-2 ${activeTab === 'config' ? 'bg-[var(--accent)] text-white shadow-lg' : 'bg-[rgba(255,255,255,0.05)] text-[var(--text-secondary)] hover:bg-[rgba(255,255,255,0.1)] hover:text-white'}`}
+                    onClick={() => setActiveTab('config')}
+                >
+                    System Config
+                </button>
+            </>
+        )}
+      </div>
+
+      <div className="flex-1 overflow-y-auto custom-scrollbar pb-6 flex flex-col">
+        {/* TAB 1: System */}
+        {activeTab === 'system' && (
+            <div className="flex flex-col gap-6 shrink-0">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Backup & Restore Panel */}
+                    <div className="glass-panel p-6">
           <h3 style={{ fontSize: '1.1rem', marginBottom: '16px', color: '#10b981' }}>Backup & Restore</h3>
           <p style={{ color: 'var(--text-secondary)', marginBottom: '16px', fontSize: '0.9rem' }}>
             Tải về bản sao lưu an toàn bao gồm database (smarthome.db), cấu hình thiết bị và các biến môi trường (.env).
@@ -307,10 +362,13 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
-      </div>
-
-      {currentUser?.role === 'Admin' && (
-        <div className="glass-panel" style={{ padding: '20px', marginBottom: '24px' }}>
+          </div>
+        </div>
+        )}
+        
+        {/* TAB 2: Users */}
+        {activeTab === 'users' && currentUser?.role === 'Admin' && (
+        <div className="glass-panel shrink-0" style={{ padding: '20px', marginBottom: '24px' }}>
           <h3 style={{ fontSize: '1.1rem', marginBottom: '16px', color: '#a855f7' }}>User Management</h3>
           <p style={{ color: 'var(--text-secondary)', marginBottom: '16px', fontSize: '0.9rem' }}>
             Quản lý tài khoản truy cập hệ thống.
@@ -365,11 +423,10 @@ export default function SettingsPage() {
               </div>
           </div>
         </div>
-      )}
-
-      {/* Config Manager Panel */}
-      {currentUser?.role === 'Admin' && (
-        <div className="glass-panel" style={{ padding: '20px', marginBottom: '24px' }}>
+        )}
+        {/* TAB 3: System Config */}
+        {activeTab === 'config' && currentUser?.role === 'Admin' && (
+        <div className="glass-panel shrink-0" style={{ padding: '20px', marginBottom: '24px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <div>
               <h3 style={{ fontSize: '1.1rem', color: '#10b981' }}>System Configuration (.env)</h3>
@@ -404,10 +461,12 @@ export default function SettingsPage() {
               )}
           </div>
         </div>
-      )}
-
-      {/* Live Logs Panel */}
-      <div className="glass-panel" style={{ padding: '20px', display: 'flex', flexDirection: 'column', height: '400px' }}>
+        )}
+        {/* Live Logs Panel (Always visible across tabs for debug, or only on System Tab?)
+            Since it was global, let's keep it visible at the bottom or only in System tab.
+            Let's put it outside the tabs, but within the scrollable container.
+        */}
+        <div className="glass-panel flex-1" style={{ padding: '20px', display: 'flex', flexDirection: 'column', marginTop: '24px', minHeight: '300px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <h3 style={{ fontSize: '1.1rem', color: '#f59e0b' }}>System Logs (journalctl)</h3>
           
@@ -440,6 +499,8 @@ export default function SettingsPage() {
           }}
         />
       </div>
-    </>
+      
+      </div> {/* End scrollable area */}
+    </div>
   );
 }

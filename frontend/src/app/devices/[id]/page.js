@@ -1,6 +1,8 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { controlDevice } from '../../../api/controlApi';
+import { showDialog, showToast } from '../../../utils/ui';
 
 export default function DeviceDetailsPage() {
     const params = useParams();
@@ -20,8 +22,9 @@ export default function DeviceDetailsPage() {
             if (data[id]) {
                 setDeviceInfo(data[id]);
             } else {
-                alert("Device not found!");
-                router.push('/devices');
+                showDialog("Not Found", "Device not found!", "warning", () => {
+                    router.push('/devices');
+                });
             }
         } catch (e) {
             console.error("Error fetching device info", e);
@@ -51,6 +54,7 @@ export default function DeviceDetailsPage() {
         }
     };
 
+    /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
     useEffect(() => {
         if (!id) return;
         fetchDeviceInfo();
@@ -81,23 +85,20 @@ export default function DeviceDetailsPage() {
             eventSource.close();
         };
     }, [id]);
+    /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 
     const handleControl = async (action) => {
         try {
-            const res = await fetch('/api/devices/control', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ device_id: id, action })
-            });
-            if (res.ok) {
-                // Instantly optimistically update and then refetch
-                setStatus(action === 'on' ? 'ON' : 'OFF');
-                fetchStatusAndHistory();
-            } else {
-                alert("Control failed!");
-            }
+            // Using the shared api helper
+            const res = await controlDevice({ deviceId: id, action });
+            
+            // fetchApi returns the parsed json if ok, or throws error if not ok.
+            // But we need to handle success here based on it not throwing.
+            setStatus(action === 'on' ? 'ON' : 'OFF');
+            fetchStatusAndHistory();
+            showToast("Command executed successfully", "success");
         } catch (e) {
-            alert("Error: " + e.message);
+            showDialog("Error", "Error: " + e.message, "danger");
         }
     };
 

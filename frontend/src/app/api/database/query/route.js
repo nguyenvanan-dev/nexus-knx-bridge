@@ -14,7 +14,7 @@ export async function POST(req) {
     const body = await req.json();
     const res = await fetch(`${BACKEND_URL}/api/database/query`, {
       method: 'POST',
-      headers: HEADERS,
+      headers: { ...HEADERS, ...authHeaders },
       body: JSON.stringify(body)
     });
     

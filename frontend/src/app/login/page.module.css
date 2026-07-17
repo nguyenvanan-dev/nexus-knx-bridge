@@ -1,115 +1,123 @@
-.container {
+.splitContainer {
   display: flex;
-  align-items: center;
+  width: 100%;
+  height: 100vh;
+}
+
+.brandSection {
+  width: 60%;
+  background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.brandSection::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: radial-gradient(circle at center, rgba(59, 130, 246, 0.15) 0%, transparent 70%);
+}
+
+.brandOverlay {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  display: flex;
   justify-content: center;
-  min-height: 100vh;
-  background-color: #0f172a;
-  background-image: radial-gradient(circle at 50% -20%, #1e293b, #0f172a);
-  color: #f8fafc;
-  padding: 1rem;
+  align-items: center;
+  z-index: 2;
+}
+
+.brandContent {
+  text-align: center;
+}
+
+.formSection {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: var(--bg-main);
+  padding: 20px;
 }
 
 .loginBox {
+  background: var(--bg-glass);
+  backdrop-filter: blur(20px);
+  padding: 40px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-glass);
   width: 100%;
   max-width: 400px;
-  background: rgba(30, 41, 59, 0.7);
-  backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
-  padding: 2.5rem 2rem;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
 }
 
-.title {
+.logo {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.logo h2 {
   font-size: 1.8rem;
   font-weight: 700;
-  text-align: center;
-  margin: 0;
-  background: linear-gradient(to right, #38bdf8, #818cf8);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
 }
 
-.subtitle {
-  text-align: center;
-  color: #94a3b8;
+.inputGroup {
+  margin-bottom: 20px;
+}
+
+.inputGroup label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--text-secondary);
   font-size: 0.9rem;
-  margin-top: 0.5rem;
-  margin-bottom: 2rem;
+}
+
+.inputGroup input {
+  width: 100%;
+  padding: 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-glass);
+  background: rgba(0,0,0,0.2);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.3s;
+}
+
+.inputGroup input:focus {
+  border-color: var(--accent-blue);
+}
+
+.submitBtn {
+  width: 100%;
+  padding: 14px;
+  border-radius: var(--radius-md);
+  border: none;
+  background: var(--accent-gradient);
+  color: white;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: opacity 0.3s;
+  margin-top: 10px;
+}
+
+.submitBtn:hover {
+  opacity: 0.9;
 }
 
 .error {
   background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
   color: #ef4444;
-  padding: 0.75rem;
-  border-radius: 8px;
-  font-size: 0.875rem;
-  margin-bottom: 1.5rem;
-  border: 1px solid rgba(239, 68, 68, 0.2);
+  padding: 12px;
+  border-radius: var(--radius-md);
+  margin-bottom: 20px;
   text-align: center;
+  font-size: 0.9rem;
 }
 
-.form {
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-}
-
-.inputGroup {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.inputGroup label {
-  font-size: 0.875rem;
-  color: #cbd5e1;
-  font-weight: 500;
-}
-
-.inputGroup input {
-  background: rgba(15, 23, 42, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 0.75rem 1rem;
-  border-radius: 8px;
-  color: white;
-  font-size: 1rem;
-  transition: all 0.2s ease;
-}
-
-.inputGroup input:focus {
-  outline: none;
-  border-color: #38bdf8;
-  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
-}
-
-.inputGroup input:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.submitBtn {
-  margin-top: 1rem;
-  background: linear-gradient(to right, #38bdf8, #818cf8);
-  color: white;
-  border: none;
-  padding: 0.875rem;
-  border-radius: 8px;
-  font-weight: 600;
-  font-size: 1rem;
-  cursor: pointer;
-  transition: opacity 0.2s, transform 0.1s;
-}
-
-.submitBtn:hover:not(:disabled) {
-  opacity: 0.9;
-}
-
-.submitBtn:active:not(:disabled) {
-  transform: scale(0.98);
-}
-
-.submitBtn:disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
+@media (max-width: 768px) {
+  .brandSection {
+    display: none;
+  }
 }

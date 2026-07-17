@@ -1,108 +1,176 @@
 'use client';
+
 import { useState, useEffect } from 'react';
+import StatusBadge from '../components/StatusBadge';
+import RoomChip from '../components/RoomChip';
+import SceneButton from '../components/SceneButton';
+import DeviceCard from '../components/DeviceCard';
+import DeviceControlModal from '../components/DeviceControlModal';
 
-export default function Home() {
-  const [health, setHealth] = useState(null);
-  const [loading, setLoading] = useState(true);
+import { useDevices } from '../hooks/useDevices';
+import { mockRooms } from '../mock/rooms';
+import { mockScenes } from '../mock/scenes';
 
-  const fetchHealth = async () => {
-    try {
-      const res = await fetch('/api/health');
-      const data = await res.json();
-      setHealth(data);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  };
+import { controlDevice } from '../api/controlApi';
+
+export default function Dashboard() {
+  const [activeRoom, setActiveRoom] = useState('all');
+  const [selectedDevice, setSelectedDevice] = useState(null);
+  const { devices, isLoading, error, setDevices } = useDevices();
+  const [commandState, setCommandState] = useState({ status: 'idle', message: '' });
+  const [knxStatus, setKnxStatus] = useState('CHECKING');
 
   useEffect(() => {
+    const fetchHealth = async () => {
+      try {
+        const res = await fetch('/api/health/detail');
+        if (res.ok) {
+          const data = await res.json();
+          setKnxStatus(data.knx_bus === 'connected' ? 'LIVE KNX' : 'DISCONNECTED');
+        } else {
+          setKnxStatus('DISCONNECTED');
+        }
+      } catch (err) {
+        setKnxStatus('DISCONNECTED');
+      }
+    };
     fetchHealth();
-    const interval = setInterval(fetchHealth, 5000);
+    // Refresh health status every 30 seconds
+    const interval = setInterval(fetchHealth, 30000);
     return () => clearInterval(interval);
   }, []);
 
+  const handleControl = async (id, action, value = null) => {
+    const device = devices.find(d => d.id === id);
+    if (!device) return;
+
+    const previousDevices = [...devices];
+    
+    // Optimistic Update
+    setDevices(devices.map(d => {
+      if (d.id === id) {
+          if (action === 'on' || action === 'off') {
+              return { ...d, isOn: action === 'on', value: action === 'on' ? '100%' : 'Off' };
+          } else if (action === 'brightness') {
+              return { ...d, isOn: value > 0, value: value > 0 ? `${value}%` : 'Off' };
+          }
+      }
+      return d;
+    }));
+    setCommandState({ status: 'sending', message: 'Sending command...' });
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      
+      const payload = { device: id, action: action };
+      if (value !== null) payload.value = value;
+      
+      // We use controlDevice which has been updated to accept an object
+      await controlDevice({ deviceId: id, action, value, signal: controller.signal });
+      clearTimeout(timeoutId);
+      
+      setCommandState({ status: 'success', message: 'Device updated' });
+      setTimeout(() => setCommandState({ status: 'idle', message: '' }), 2000);
+    } catch (err) {
+      console.error('Control failed:', err);
+      // Rollback
+      setDevices(previousDevices);
+      setCommandState({ status: 'error', message: err.name === 'AbortError' ? 'Command timed out' : 'Command failed' });
+      setTimeout(() => setCommandState({ status: 'idle', message: '' }), 3000);
+    }
+  };
+
+  // Adapter for old onToggle
+  const handleToggle = (id, newState) => {
+      handleControl(id, newState ? 'on' : 'off');
+  };
+
+  const filteredDevices = activeRoom === 'all' 
+    ? devices 
+    : devices.filter(d => d.room === activeRoom);
+
   return (
-    <>
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: '600' }}>Dashboard Overview</h2>
-          <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>Hệ sinh thái KNX AI Smart Home</p>
-        </div>
-        {health && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem' }}>
-            <span style={{ 
-              display: 'inline-block', 
-              width: '10px', 
-              height: '10px', 
-              borderRadius: '50%', 
-              backgroundColor: health.ok ? '#10b981' : '#ef4444' 
-            }}></span>
-            {health.ok ? 'System Online' : 'System Offline'}
-          </div>
+    <div className="page-container animate-fade-in">
+      {/* Top Status */}
+      <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', alignItems: 'center' }}>
+        <StatusBadge 
+          label="KNX Gateway" 
+          status={knxStatus === 'LIVE KNX' ? 'online' : knxStatus === 'CHECKING' ? 'warning' : 'offline'} 
+          customText={knxStatus}
+        />
+        {commandState.status !== 'idle' && (
+          <span style={{ 
+            fontSize: '0.875rem', 
+            padding: '4px 12px', 
+            borderRadius: '16px',
+            backgroundColor: commandState.status === 'error' ? 'rgba(239, 68, 68, 0.1)' : 
+                             commandState.status === 'success' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(59, 130, 246, 0.1)',
+            color: commandState.status === 'error' ? '#ef4444' : 
+                   commandState.status === 'success' ? '#22c55e' : '#3b82f6'
+          }}>
+            {commandState.message}
+          </span>
         )}
-      </header>
+      </div>
 
-      {loading ? (
-        <div style={{ marginTop: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>Đang tải dữ liệu hệ thống...</div>
-      ) : health ? (
-        <>
-          <div className='grid-3' style={{marginTop: '24px'}}>
-            <div className='glass-panel stat-card'>
-              <div className='stat-label'>Tổng số thiết bị KNX</div>
-              <div className='stat-value gradient-text'>{health.devices}</div>
-            </div>
-            <div className='glass-panel stat-card'>
-              <div className='stat-label'>KNX Gateway</div>
-              <div className='stat-value' style={{ color: health.knx_connected ? '#10b981' : '#ef4444' }}>
-                {health.knx_connected ? 'Connected' : 'Disconnected'}
-              </div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '8px' }}>
-                {health.knx_gateway_ip}:{health.knx_gateway_port}
-              </div>
-            </div>
-            <div className='glass-panel stat-card'>
-              <div className='stat-label'>AI OpenClaw Proposals</div>
-              <div className='stat-value'>{health.pending_proposals} <span style={{fontSize: '1rem', color: 'var(--text-secondary)'}}>pending</span></div>
-            </div>
-          </div>
+      {/* Rooms Filter */}
+      <div style={{ display: 'flex', gap: '12px', overflowX: 'auto', paddingBottom: '8px', marginBottom: '32px' }} className="no-scrollbar">
+        <RoomChip 
+          key="all"
+          name="Tất Cả (All)"
+          isActive={activeRoom === 'all'}
+          onClick={() => setActiveRoom('all')}
+        />
+        {Array.from(new Set(devices.map(d => d.room).filter(Boolean))).map(room => (
+          <RoomChip 
+            key={room}
+            name={room}
+            isActive={activeRoom === room}
+            onClick={() => setActiveRoom(room)}
+          />
+        ))}
+      </div>
 
-          <h3 style={{ fontSize: '1.2rem', fontWeight: '500', marginTop: '32px', marginBottom: '16px' }}>Hardware Metrics (Raspberry Pi)</h3>
-          <div className='grid-4' style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
-            <div className='glass-panel' style={{ padding: '20px', textAlign: 'center' }}>
-              <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '8px' }}>CPU Usage</div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: health.hardware?.cpu_percent > 80 ? '#ef4444' : 'var(--text-primary)' }}>
-                {health.hardware?.cpu_percent}%
-              </div>
-            </div>
-            <div className='glass-panel' style={{ padding: '20px', textAlign: 'center' }}>
-              <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '8px' }}>RAM Usage</div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: health.hardware?.ram_percent > 80 ? '#ef4444' : 'var(--text-primary)' }}>
-                {health.hardware?.ram_percent}%
-              </div>
-            </div>
-            <div className='glass-panel' style={{ padding: '20px', textAlign: 'center' }}>
-              <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '8px' }}>Disk Usage</div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>
-                {health.hardware?.disk_percent}%
-              </div>
-            </div>
-            <div className='glass-panel' style={{ padding: '20px', textAlign: 'center' }}>
-              <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '8px' }}>Temperature</div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: health.hardware?.temperature > 70 ? '#ef4444' : 'var(--text-primary)' }}>
-                {health.hardware?.temperature ? `${health.hardware.temperature}°C` : 'N/A'}
-              </div>
-            </div>
-          </div>
-          
-          <div style={{ marginTop: '32px', fontSize: '0.9rem', color: 'var(--text-secondary)', textAlign: 'center' }}>
-            FastAPI Version: {health.version} • OS: {health.hardware?.os} • Local IP: {health.knx_local_ip}
-          </div>
-        </>
+      {/* Control & Test */}
+      <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', marginBottom: '16px' }}>Control & Test</h2>
+      {isLoading ? (
+        <div style={{ color: 'var(--text-muted)' }}>Loading devices...</div>
+      ) : error ? (
+        <div style={{ color: 'red' }}>Error loading devices: {error}</div>
       ) : (
-        <div style={{ marginTop: '40px', textAlign: 'center', color: '#ef4444' }}>Không thể kết nối đến Backend API!</div>
+        <div className="grid-4">
+          {filteredDevices.map(device => (
+            <DeviceCard
+              key={device.id}
+              id={device.id}
+              name={device.name}
+              type={device.type}
+              icon={device.icon}
+              isOn={device.isOn}
+              value={device.value}
+              capabilities={device.capabilities}
+              onToggle={handleToggle}
+              onControl={handleControl}
+              onOpenControl={() => setSelectedDevice(device)}
+            />
+          ))}
+        </div>
       )}
-    </>
+
+      {/* Recent Events (Placeholder) */}
+      <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', margin: '32px 0 16px' }}>Recent Events</h2>
+      <div className="glass-panel" style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)' }}>
+        No recent events recorded.
+      </div>
+
+      {selectedDevice && (
+        <DeviceControlModal 
+          device={selectedDevice} 
+          onClose={() => setSelectedDevice(null)} 
+          onControl={handleControl}
+        />
+      )}
+    </div>
   );
 }

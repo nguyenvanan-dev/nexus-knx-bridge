@@ -1,5 +1,39 @@
 'use client';
 import { useState, useEffect } from 'react';
+import { showDialog, showToast } from '../../utils/ui';
+
+const TABLE_GROUPS = [
+  {
+    name: '1. Quản lý Thiết bị & User',
+    tables: ['devices', 'users'],
+    desc: { devices: 'Cấu hình thiết bị KNX vật lý', users: 'Tài khoản quản trị hệ thống' }
+  },
+  {
+    name: '2. Lịch sử & Thống kê',
+    tables: ['device_history', 'command_audit', 'analytics_daily'],
+    desc: { device_history: 'Lịch sử bật/tắt thiết bị', command_audit: 'Nhật ký các lệnh điều khiển', analytics_daily: 'Dữ liệu thống kê theo ngày' }
+  },
+  {
+    name: '3. AI & Trợ lý ảo',
+    tables: ['ai_conversations', 'ai_memories'],
+    desc: { ai_conversations: 'Lịch sử chat với OpenClaw', ai_memories: 'Bộ nhớ / sở thích người dùng' }
+  },
+  {
+    name: '4. Tự động hóa & Kịch bản',
+    tables: ['scenes', 'scene_actions', 'scene_versions', 'automation_rules', 'automation_rules_v2', 'floor_plans', 'floor_plan_devices'],
+    desc: {
+      scenes: 'Tên Kịch bản', scene_actions: 'Hành động của Kịch bản', scene_versions: 'Lịch sử sửa Kịch bản',
+      automation_rules: 'Luật tự động hóa', automation_rules_v2: 'Luật tự động hóa V2',
+      floor_plans: 'Bản đồ mặt bằng', floor_plan_devices: 'Vị trí thiết bị trên bản đồ'
+    }
+  },
+  {
+    name: '5. Hệ thống',
+    tables: ['sqlite_sequence'],
+    desc: { sqlite_sequence: 'ID tự động của SQLite' }
+  }
+];
+
 
 export default function DatabasePage() {
   const [tables, setTables] = useState([]);
@@ -33,9 +67,11 @@ export default function DatabasePage() {
     }
   };
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     fetchTables();
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const loadTableData = async (tableName) => {
     setActiveTable(tableName);
@@ -72,7 +108,7 @@ export default function DatabasePage() {
           if (!res.ok) throw new Error("Failed to create snapshot");
           return true;
       } catch (e) {
-          alert("Safety Check Failed: Could not create snapshot. " + e.message);
+          showDialog("Safety Check Failed", "Could not create snapshot. " + e.message, "danger");
           return false;
       }
   };
@@ -88,7 +124,7 @@ export default function DatabasePage() {
           if (!res.ok) throw new Error(data.detail || data.error || "Unknown error");
           return true;
       } catch (e) {
-          alert("Query Error: " + e.message);
+          showDialog("Query Error", e.message, "danger");
           return false;
       }
   };
@@ -151,25 +187,27 @@ export default function DatabasePage() {
   };
 
   const handleDelete = async (row) => {
-      if (!confirm("Are you sure you want to delete this row?")) return;
-      if (!await createSnapshot()) return;
-
-      let whereClauses = [];
-      if ('id' in row) {
-          whereClauses.push(`id = '${row['id']}'`);
-      } else {
-          for (const key of tableData.columns) {
-              const val = row[key];
-              if (val === null) whereClauses.push(`${key} IS NULL`);
-              else whereClauses.push(`${key} = '${String(val).replace(/'/g, "''")}'`);
+      showDialog("Delete Row", "Are you sure you want to delete this row?", "danger", async () => {
+          if (!await createSnapshot()) return;
+    
+          let whereClauses = [];
+          if ('id' in row) {
+              whereClauses.push(`id = '${row['id']}'`);
+          } else {
+              for (const key of tableData.columns) {
+                  const val = row[key];
+                  if (val === null) whereClauses.push(`${key} IS NULL`);
+                  else whereClauses.push(`${key} = '${String(val).replace(/'/g, "''")}'`);
+              }
           }
-      }
-
-      const sql = `DELETE FROM ${activeTable} WHERE ${whereClauses.join(' AND ')};`;
-      if (await executeWriteQuery(sql)) {
-          loadTableData(activeTable);
-          fetchTables();
-      }
+          
+          const sql = `DELETE FROM ${activeTable} WHERE ${whereClauses.join(' AND ')};`;
+          if (await executeWriteQuery(sql)) {
+              loadTableData(activeTable);
+              fetchTables();
+              showToast("Row deleted successfully", "success");
+          }
+      });
   };
 
   const handleExecute = async () => {
@@ -197,8 +235,8 @@ export default function DatabasePage() {
   };
 
   return (
-    <>
-      <header style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <div className="page-container animate-fade-in flex flex-col h-full max-h-full">
+      <header className="shrink-0" style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
             <h2 style={{ fontSize: '1.5rem', fontWeight: '600' }}>Database Manager</h2>
             <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>Quản trị SQLite (smarthome.db) an toàn (Auto-backup)</p>
@@ -217,33 +255,76 @@ export default function DatabasePage() {
         </div>
       </header>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '250px 1fr', gap: '24px', height: 'calc(100vh - 120px)' }}>
+      <div className="flex-1 overflow-hidden" style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: '24px', minHeight: 0 }}>
         {/* Left Sidebar - Tables */}
-        <div className="glass-panel" style={{ padding: '16px', overflowY: 'auto' }}>
-          <h3 style={{ fontSize: '1rem', marginBottom: '16px', color: '#10b981' }}>Tables</h3>
-          {loadingTables ? (
+        <div className="glass-panel flex flex-col overflow-hidden" style={{ padding: '16px', display: 'flex', minHeight: 0 }}>
+          <h3 className="shrink-0" style={{ fontSize: '1rem', marginBottom: '16px', color: '#10b981' }}>Tables</h3>
+          <div className="flex-1 overflow-y-auto custom-scrollbar" style={{ paddingRight: '4px' }}>
+            {loadingTables ? (
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Loading...</p>
           ) : tables.length === 0 ? (
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>No tables found.</p>
           ) : (
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {tables.map(t => (
-                <li key={t.name}>
-                  <button 
-                    onClick={() => handleTableClick(t.name)}
-                    style={{ 
-                      width: '100%', textAlign: 'left', background: activeTable === t.name ? 'rgba(59, 130, 246, 0.2)' : 'rgba(255,255,255,0.05)', 
-                      border: activeTable === t.name ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.1)', color: '#fff', 
-                      padding: '8px 12px', borderRadius: '6px', cursor: 'pointer',
-                      display: 'flex', justifyContent: 'space-between'
-                    }}>
-                    <span>{t.name}</span>
-                    <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>{t.rows}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {TABLE_GROUPS.map(group => {
+                  const groupTables = tables.filter(t => group.tables.includes(t.name));
+                  if (groupTables.length === 0) return null;
+                  return (
+                      <div key={group.name}>
+                          <h4 style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '8px', fontWeight: 'bold', letterSpacing: '0.05em' }}>{group.name}</h4>
+                          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            {groupTables.map(t => (
+                              <li key={t.name}>
+                                <button 
+                                  onClick={() => handleTableClick(t.name)}
+                                  style={{ 
+                                    width: '100%', textAlign: 'left', background: activeTable === t.name ? 'rgba(59, 130, 246, 0.2)' : 'rgba(255,255,255,0.05)', 
+                                    border: activeTable === t.name ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.1)', color: '#fff', 
+                                    padding: '8px 12px', borderRadius: '6px', cursor: 'pointer',
+                                    display: 'flex', flexDirection: 'column', gap: '2px'
+                                  }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+                                    <span style={{ fontWeight: '500', fontSize: '0.95rem' }}>{t.name}</span>
+                                    <span style={{ color: activeTable === t.name ? '#93c5fd' : 'var(--text-secondary)', fontSize: '0.8rem', background: 'rgba(0,0,0,0.2)', padding: '2px 6px', borderRadius: '12px' }}>{t.rows} rows</span>
+                                  </div>
+                                  <span style={{ fontSize: '0.75rem', color: activeTable === t.name ? '#bfdbfe' : 'var(--text-secondary)' }}>{group.desc[t.name]}</span>
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                      </div>
+                  );
+              })}
+              
+              {(() => {
+                  const otherTables = tables.filter(t => !TABLE_GROUPS.some(g => g.tables.includes(t.name)));
+                  if (otherTables.length === 0) return null;
+                  return (
+                      <div key="Others">
+                          <h4 style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '8px', fontWeight: 'bold', letterSpacing: '0.05em' }}>Bảng khác</h4>
+                          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            {otherTables.map(t => (
+                              <li key={t.name}>
+                                <button 
+                                  onClick={() => handleTableClick(t.name)}
+                                  style={{ 
+                                    width: '100%', textAlign: 'left', background: activeTable === t.name ? 'rgba(59, 130, 246, 0.2)' : 'rgba(255,255,255,0.05)', 
+                                    border: activeTable === t.name ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.1)', color: '#fff', 
+                                    padding: '8px 12px', borderRadius: '6px', cursor: 'pointer',
+                                    display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                                  }}>
+                                  <span style={{ fontWeight: '500', fontSize: '0.95rem' }}>{t.name}</span>
+                                  <span style={{ color: activeTable === t.name ? '#93c5fd' : 'var(--text-secondary)', fontSize: '0.8rem', background: 'rgba(0,0,0,0.2)', padding: '2px 6px', borderRadius: '12px' }}>{t.rows} rows</span>
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                      </div>
+                  );
+              })()}
+            </div>
           )}
+          </div>
         </div>
 
         {/* Right Content */}
@@ -421,6 +502,6 @@ export default function DatabasePage() {
               </div>
           </div>
       )}
-    </>
+    </div>
   );
 }

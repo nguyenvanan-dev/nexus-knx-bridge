@@ -546,53 +546,51 @@ function ActionEditor({ actions, onChange, devices, scenes }) {
 // ── Rule Card ─────────────────────────────────────────────────
 function RuleCard({ rule, onEdit, onDelete, onToggle, onTest, testLoading }) {
   const ttype = rule.trigger?.type || 'device_state';
-  const triggerIcon = { device_state: '🔌', time: '🕐', sun: '🌅', system: '⚙️' }[ttype] || '⚡';
 
   return (
-    <div className={`bg-gray-900/60 border rounded-2xl p-5 transition-all ${rule.enabled ? 'border-gray-800 hover:border-gray-700' : 'border-gray-800/40 opacity-60'}`}>
+    <div className={`glass-panel p-5 transition-all ${rule.enabled ? 'border-gray-800 hover:border-gray-700' : 'border-gray-800/40 opacity-60'}`}>
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-start gap-3 flex-1 min-w-0">
-          <div className="text-2xl mt-0.5">{triggerIcon}</div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <h3 className="text-white font-semibold truncate">{rule.name}</h3>
-              <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${rule.enabled ? 'bg-green-500/20 text-green-400' : 'bg-gray-700 text-gray-500'}`}>
+              <h3 className="text-gray-100 font-medium tracking-wide truncate">{rule.name}</h3>
+              <span className={`text-[10px] px-2 py-0.5 rounded uppercase tracking-wider font-semibold ${rule.enabled ? 'bg-emerald-950/50 text-emerald-400 border border-emerald-900/50' : 'bg-gray-800 text-gray-500 border border-gray-700'}`}>
                 {rule.enabled ? 'Active' : 'Disabled'}
               </span>
-              {rule.priority > 75 && <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-400">High Priority</span>}
+              {rule.priority > 75 && <span className="text-[10px] px-2 py-0.5 rounded uppercase tracking-wider font-semibold bg-red-950/50 text-red-400 border border-red-900/50">High Priority</span>}
             </div>
-            {rule.description && <p className="text-gray-500 text-xs mt-0.5 truncate">{rule.description}</p>}
+            {rule.description && <p className="text-gray-500 text-xs mt-1 truncate">{rule.description}</p>}
 
-            <div className="flex items-center flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-gray-500">
-              <span>Trigger: <span className="text-gray-300">{ttype === 'device_state' ? `${rule.trigger?.device_id} ${rule.trigger?.op} ${rule.trigger?.state}` : ttype === 'time' ? `${rule.trigger?.at || ''}` : ttype === 'sun' ? `${rule.trigger?.event} ${rule.trigger?.offset_minutes > 0 ? '+' : ''}${rule.trigger?.offset_minutes || 0}min` : rule.trigger?.event || ''}</span></span>
-              {rule.conditions && <span>Conditions: <span className="text-yellow-400">{rule.conditions?.op} ({(rule.conditions?.items || []).length})</span></span>}
-              <span>Actions: <span className="text-blue-400">{(rule.actions || []).length}</span></span>
-              <span>Cooldown: <span className="text-gray-300">{rule.cooldown_seconds}s</span></span>
-              {rule.run_count > 0 && <span>Runs: <span className="text-green-400">{rule.run_count}</span></span>}
-              {rule.last_error && <span className="text-red-400">⚠ Error: {rule.last_error.slice(0, 40)}</span>}
+            <div className="flex items-center flex-wrap gap-x-4 gap-y-1 mt-3 text-xs text-gray-500">
+              <span>Trigger: <span className="text-gray-300 font-medium">{ttype === 'device_state' ? `${rule.trigger?.device_id} ${rule.trigger?.op} ${rule.trigger?.state}` : ttype === 'time' ? `${rule.trigger?.at || ''}` : ttype === 'sun' ? `${rule.trigger?.event} ${rule.trigger?.offset_minutes > 0 ? '+' : ''}${rule.trigger?.offset_minutes || 0}min` : rule.trigger?.event || ''}</span></span>
+              {rule.conditions && <span>Conditions: <span className="text-cyan-400 font-medium">{rule.conditions?.op} ({(rule.conditions?.items || []).length})</span></span>}
+              <span>Actions: <span className="text-gray-300 font-medium">{(rule.actions || []).length}</span></span>
+              <span>Cooldown: <span className="text-gray-300 font-medium">{rule.cooldown_seconds}s</span></span>
+              {rule.run_count > 0 && <span>Runs: <span className="text-emerald-400 font-medium">{rule.run_count}</span></span>}
+              {rule.last_error && <span className="text-red-400 font-medium">⚠ Error: {rule.last_error.slice(0, 40)}</span>}
             </div>
           </div>
         </div>
 
         <div className="flex items-center gap-2 flex-shrink-0">
-          <div className="flex bg-gray-800 rounded-lg overflow-hidden border border-gray-700">
+          <div className="flex bg-gray-900 rounded-lg overflow-hidden border border-gray-800">
             <button onClick={() => onTest(rule.rule_id, true)} disabled={testLoading === rule.rule_id}
-              title="Dry Run (Check conditions without executing actions)"
-              className="px-3 py-1.5 text-xs text-blue-400 hover:bg-gray-700 transition-colors disabled:opacity-50 border-r border-gray-700">
-              {testLoading === rule.rule_id ? '⏳' : '🔍 Dry Run'}
+              title="Dry Run"
+              className="px-3 py-1.5 text-xs text-cyan-400 hover:bg-gray-800 transition-colors disabled:opacity-50 border-r border-gray-800 font-medium">
+              {testLoading === rule.rule_id ? 'Wait' : 'Dry Run'}
             </button>
             <button onClick={() => onTest(rule.rule_id, false)} disabled={testLoading === rule.rule_id}
-              title="Execute Action (Skip conditions & run actions)"
-              className="px-3 py-1.5 text-xs text-red-400 hover:bg-gray-700 transition-colors disabled:opacity-50">
-              {testLoading === rule.rule_id ? '⏳' : '▶ Execute'}
+              title="Execute Action"
+              className="px-3 py-1.5 text-xs text-red-400 hover:bg-gray-800 transition-colors disabled:opacity-50 font-medium">
+              {testLoading === rule.rule_id ? 'Wait' : 'Execute'}
             </button>
           </div>
           <button onClick={() => onToggle(rule.rule_id)}
-            className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${rule.enabled ? 'bg-gray-800 text-yellow-400 border-yellow-500/30 hover:bg-yellow-500/10' : 'bg-gray-800 text-green-400 border-green-500/30 hover:bg-green-500/10'}`}>
+            className={`px-3 py-1.5 text-xs rounded-lg border transition-colors font-medium ${rule.enabled ? 'bg-gray-900 text-gray-400 border-gray-700 hover:text-white' : 'bg-gray-900 text-emerald-400 border-emerald-900/50 hover:bg-emerald-950/30'}`}>
             {rule.enabled ? 'Disable' : 'Enable'}
           </button>
-          <button onClick={() => onEdit(rule)} className="px-3 py-1.5 text-xs bg-blue-600/20 text-blue-400 border border-blue-500/30 rounded-lg hover:bg-blue-600/30 transition-colors">Edit</button>
-          <button onClick={() => onDelete(rule.rule_id)} className="px-3 py-1.5 text-xs bg-red-500/10 text-red-400 border border-red-500/20 rounded-lg hover:bg-red-500/20 transition-colors">Delete</button>
+          <button onClick={() => onEdit(rule)} className="px-3 py-1.5 text-xs bg-gray-900 text-gray-300 border border-gray-700 rounded-lg hover:text-white transition-colors font-medium">Edit</button>
+          <button onClick={() => onDelete(rule.rule_id)} className="px-3 py-1.5 text-xs bg-red-950/20 text-red-400 border border-red-900/30 rounded-lg hover:bg-red-900/40 transition-colors font-medium">Delete</button>
         </div>
       </div>
     </div>
@@ -814,19 +812,18 @@ export default function AutomationPage() {
   return (
     <div className="min-h-screen bg-gray-950 text-white">
       {/* Header */}
-      <div className="sticky top-0 z-20 flex items-center justify-between px-6 py-4 bg-gray-900/95 border-b border-gray-800 backdrop-blur-sm">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800 bg-gray-900/80 backdrop-blur-sm">
         <div className="flex items-center gap-4">
           <Link href="/" className="text-gray-400 hover:text-white transition-colors">← Back</Link>
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-purple-400 flex items-center justify-center text-sm">⚡</div>
-            <h1 className="text-xl font-bold bg-gradient-to-r from-violet-400 to-purple-300 bg-clip-text text-transparent">
+            <h1 className="text-xl font-light text-gray-100 tracking-wide">
               Automation Engine
             </h1>
           </div>
         </div>
         <button onClick={() => { setEditing(emptyRule()); setIsCreating(true); }}
-          className="px-5 py-2.5 bg-gradient-to-r from-violet-600 to-purple-600 text-white rounded-xl text-sm font-semibold hover:from-violet-500 hover:to-purple-500 transition-all shadow-lg shadow-purple-500/20">
-          + New Rule
+          className="px-5 py-2 border border-gray-700 bg-gray-900 text-gray-200 rounded-lg text-sm hover:border-gray-500 hover:text-white transition-all">
+          New Rule
         </button>
       </div>
 
@@ -834,14 +831,18 @@ export default function AutomationPage() {
         {/* Stats */}
         <div className="grid grid-cols-4 gap-4 mb-6">
           {[
-            { label: 'Total Rules', value: rules.length, color: 'text-white' },
-            { label: 'Active', value: rules.filter(r => r.enabled).length, color: 'text-green-400' },
-            { label: 'Total Runs', value: rules.reduce((s, r) => s + (r.run_count || 0), 0), color: 'text-blue-400' },
+            { label: 'Total Rules', value: rules.length, color: 'text-gray-100' },
+            { label: 'Active', value: rules.filter(r => r.enabled).length, color: 'text-emerald-400' },
+            { label: 'Total Runs', value: rules.reduce((s, r) => s + (r.run_count || 0), 0), color: 'text-cyan-400' },
             { label: 'With Errors', value: rules.filter(r => r.last_error).length, color: 'text-red-400' },
           ].map(stat => (
-            <div key={stat.label} className="bg-gray-900/60 border border-gray-800 rounded-2xl p-4">
-              <div className={`text-2xl font-bold ${stat.color}`}>{stat.value}</div>
-              <div className="text-xs text-gray-500 mt-1">{stat.label}</div>
+            <div key={stat.label} className="glass-panel p-5 flex flex-col justify-between">
+              <div className="mb-4">
+                <div className={`text-[2rem] font-light leading-none ${stat.color}`}>{stat.value}</div>
+              </div>
+              <div>
+                <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest">{stat.label}</div>
+              </div>
             </div>
           ))}
         </div>
@@ -850,7 +851,7 @@ export default function AutomationPage() {
         <div className="flex gap-2 mb-5">
           {['all', 'active', 'disabled'].map(f => (
             <button key={f} onClick={() => setFilter(f)}
-              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${filter === f ? 'bg-violet-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
+              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${filter === f ? 'bg-gray-800 text-gray-100 border border-gray-600' : 'text-gray-500 hover:text-gray-300'}`}>
               {f.charAt(0).toUpperCase() + f.slice(1)}
             </button>
           ))}
@@ -858,13 +859,12 @@ export default function AutomationPage() {
 
         {/* Rules List */}
         {filteredRules.length === 0 ? (
-          <div className="text-center py-20 text-gray-500">
-            <div className="text-6xl mb-4">⚡</div>
-            <p className="text-xl font-medium mb-2">No automation rules yet</p>
-            <p className="text-sm mb-6">Create your first rule to automate your home</p>
+          <div className="text-center py-24 glass-panel mt-4">
+            <p className="text-lg font-light text-gray-300 mb-2">No automation rules yet</p>
+            <p className="text-sm text-gray-500 mb-6">Create your first rule to automate your home</p>
             <button onClick={() => { setEditing(emptyRule()); setIsCreating(true); }}
-              className="px-6 py-3 bg-violet-600 text-white rounded-xl font-semibold hover:bg-violet-500 transition-colors">
-              + Create First Rule
+              className="px-6 py-2.5 border border-gray-700 bg-gray-800 text-gray-200 rounded-lg text-sm hover:border-gray-500 transition-all">
+              Create First Rule
             </button>
           </div>
         ) : (
@@ -884,7 +884,7 @@ export default function AutomationPage() {
 
       {/* Toast */}
       {toast && (
-        <div className={`fixed bottom-6 right-6 z-50 px-5 py-3 rounded-xl shadow-2xl text-sm font-medium transition-all ${toast.type === 'error' ? 'bg-red-600 text-white' : 'bg-green-600 text-white'}`}>
+        <div className={`fixed bottom-6 right-6 z-50 px-5 py-3 rounded-lg shadow-xl text-sm font-medium transition-all ${toast.type === 'error' ? 'bg-red-950/80 border border-red-900 text-red-200' : 'bg-emerald-950/80 border border-emerald-900 text-emerald-200'}`}>
           {toast.msg}
         </div>
       )}

@@ -31,9 +31,11 @@ export default function DevicesPage() {
     }
   };
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     fetchDevices();
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleAction = async (action, payload) => {
     if (action === 'delete') {
