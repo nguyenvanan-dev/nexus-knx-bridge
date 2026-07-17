@@ -115,16 +115,16 @@ class HealthService:
         # Offline devices (Not updated in 2 hours = 7200s, or never updated)
         offline_devices = []
         now = time.time()
-        for d in self._registry.get_all():
-            did = d["id"]
+        for d in self._registry.all():
+            did = d.device_id
             state = self._state.get(did)
             if state:
                 age = now - state.last_update
                 if age > DEVICE_OFFLINE_TIMEOUT:
                     offline_devices.append({
                         "id": did,
-                        "name": d.get("name", did),
-                        "room": d.get("room", "Unknown"),
+                        "name": d.name or did,
+                        "room": d.room or "Unknown",
                         "last_update_age_s": round(age),
                         "status": "Offline"
                     })
@@ -132,8 +132,8 @@ class HealthService:
                 # Never reported
                 offline_devices.append({
                     "id": did,
-                    "name": d.get("name", did),
-                    "room": d.get("room", "Unknown"),
+                    "name": d.name or did,
+                    "room": d.room or "Unknown",
                     "last_update_age_s": None,
                     "status": "No Data"
                 })
