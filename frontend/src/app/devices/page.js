@@ -1,19 +1,21 @@
 'use client';
 import { useState, useEffect } from 'react';
+import { showDialog, showToast } from '../../utils/ui';
 
 export default function DevicesPage() {
   const [devices, setDevices] = useState({});
   const [loading, setLoading] = useState(true);
-  
+  const [searchQuery, setSearchQuery] = useState('');
+
   // Wizard State
   const [showWizard, setShowWizard] = useState(false);
   const [wizardStep, setWizardStep] = useState(1); // 1: Info, 2: GA, 3: Review, 4: Test
   const [wizardMode, setWizardMode] = useState('add'); // 'add', 'edit'
-  
+
   const [currentDevice, setCurrentDevice] = useState({
     device_id: '', type: 'light', onoff_ga: '', status_ga: '', brightness_ga: '', brightness_status_ga: ''
   });
-  
+
   const [gaWarnings, setGaWarnings] = useState([]);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -34,8 +36,16 @@ export default function DevicesPage() {
   }, []);
 
   const handleAction = async (action, payload) => {
-    if (action === 'delete' && !confirm(`Are you sure you want to delete ${payload.device_id}?`)) return;
-    
+    if (action === 'delete') {
+        showDialog("Delete Device", `Are you sure you want to delete ${payload.device_id}?`, "danger", async () => {
+            await performAction(action, payload);
+        });
+        return;
+    }
+    await performAction(action, payload);
+  };
+
+  const performAction = async (action, payload) => {
     try {
       const res = await fetch('/api/devices', {
         method: 'POST',
@@ -47,23 +57,53 @@ export default function DevicesPage() {
           const newDevices = { ...devices };
           delete newDevices[payload.device_id];
           setDevices(newDevices);
+          showToast("Device deleted successfully", "success");
         } else {
           fetchDevices();
         }
       } else {
         const err = await res.json();
-        alert('Error: ' + JSON.stringify(err));
+        showDialog("Error", JSON.stringify(err), "danger");
       }
     } catch (e) {
-      alert('Error performing action');
+      showDialog("Error", "Error performing action", "danger");
     }
   };
 
   // ---------------- WIZARD LOGIC ----------------
 
+  // ---------------- WIZARD LOGIC ----------------
+
   const openAddWizard = () => {
     setWizardMode('add');
-    setCurrentDevice({ device_id: '', type: 'light', onoff_ga: '', status_ga: '', brightness_ga: '', brightness_status_ga: '' });
+    setCurrentDevice({
+      device_id: '',
+      name: '',
+      room: 'phong_rd',
+      type: 'light',
+      onoff_ga: '',
+      status_ga: '',
+      supports_brightness: false,
+      brightness_ga: '',
+      brightness_status_ga: '',
+      color_rgb_ga: '',
+      color_temp_ga: '',
+      color_temp_status_ga: '',
+      color_temp_min: '',
+      color_temp_max: '',
+      temperature_set_ga: '',
+      temperature_status_ga: '',
+      fan_speed_ga: '',
+      mode_ga: '',
+      stop_ga: '',
+      position_set_ga: '',
+      position_status_ga: '',
+      role: '',
+      aliases: [],
+      safety_level: 'safe_demo',
+      require_confirm: false,
+      enabled: true
+    });
     setWizardStep(1);
     setGaWarnings([]);
     setShowWizard(true);
@@ -71,13 +111,36 @@ export default function DevicesPage() {
 
   const openEditWizard = (key, dev) => {
     setWizardMode('update');
+    const caps = dev.capabilities || {};
     setCurrentDevice({
       device_id: key,
+      name: dev.name || '',
+      room: dev.room || 'phong_rd',
       type: dev.type || 'light',
       onoff_ga: dev.onoff_ga || '',
       status_ga: dev.status_ga || '',
+      supports_brightness: dev.supports_brightness || false,
       brightness_ga: dev.brightness_ga || '',
-      brightness_status_ga: dev.brightness_status_ga || ''
+      brightness_status_ga: dev.brightness_status_ga || '',
+
+      color_rgb_ga: caps.rgb?.write_ga || dev.color_rgb_ga || '',
+      color_temp_ga: caps.color_temperature?.write_ga || dev.color_temp_ga || '',
+      color_temp_status_ga: caps.color_temperature?.status_ga || dev.color_temp_status_ga || '',
+      color_temp_min: caps.color_temperature?.min || dev.color_temp_min || '',
+      color_temp_max: caps.color_temperature?.max || dev.color_temp_max || '',
+      temperature_set_ga: caps.temperature_setpoint?.write_ga || dev.temperature_set_ga || '',
+      temperature_status_ga: caps.temperature_setpoint?.status_ga || dev.temperature_status_ga || '',
+      fan_speed_ga: caps.fan_speed?.write_ga || dev.fan_speed_ga || '',
+      mode_ga: caps.mode?.write_ga || dev.mode_ga || '',
+      stop_ga: caps.stop?.write_ga || dev.stop_ga || '',
+      position_set_ga: caps.position?.write_ga || dev.position_set_ga || '',
+      position_status_ga: caps.position?.status_ga || dev.position_status_ga || '',
+
+      role: dev.role || '',
+      aliases: dev.aliases || [],
+      safety_level: dev.safety_level || 'safe_demo',
+      require_confirm: dev.require_confirm || false,
+      enabled: dev.enabled !== false
     });
     setWizardStep(1);
     setGaWarnings([]);
@@ -91,12 +154,47 @@ export default function DevicesPage() {
         copy[key] = '';
       }
     }
+    if (copy.capabilities) {
+      copy.capabilities = {};
+    }
+    if (copy.knx_config_payload) {
+      copy.knx_config_payload = '';
+    }
     return copy;
   };
 
   const duplicateDevice = (key, dev) => {
     setWizardMode('add');
-    const newDevice = clear_group_addresses(dev);
+    const caps = dev.capabilities || {};
+    const fullDev = {
+      device_id: key,
+      name: dev.name || '',
+      room: dev.room || 'phong_rd',
+      type: dev.type || 'light',
+      onoff_ga: dev.onoff_ga || '',
+      status_ga: dev.status_ga || '',
+      supports_brightness: dev.supports_brightness || false,
+      brightness_ga: dev.brightness_ga || '',
+      brightness_status_ga: dev.brightness_status_ga || '',
+      color_rgb_ga: caps.rgb?.write_ga || dev.color_rgb_ga || '',
+      color_temp_ga: caps.color_temperature?.write_ga || dev.color_temp_ga || '',
+      color_temp_status_ga: caps.color_temperature?.status_ga || dev.color_temp_status_ga || '',
+      color_temp_min: caps.color_temperature?.min || dev.color_temp_min || '',
+      color_temp_max: caps.color_temperature?.max || dev.color_temp_max || '',
+      temperature_set_ga: caps.temperature_setpoint?.write_ga || dev.temperature_set_ga || '',
+      temperature_status_ga: caps.temperature_setpoint?.status_ga || dev.temperature_status_ga || '',
+      fan_speed_ga: caps.fan_speed?.write_ga || dev.fan_speed_ga || '',
+      mode_ga: caps.mode?.write_ga || dev.mode_ga || '',
+      stop_ga: caps.stop?.write_ga || dev.stop_ga || '',
+      position_set_ga: caps.position?.write_ga || dev.position_set_ga || '',
+      position_status_ga: caps.position?.status_ga || dev.position_status_ga || '',
+      role: dev.role || '',
+      aliases: dev.aliases || [],
+      safety_level: dev.safety_level || 'safe_demo',
+      require_confirm: dev.require_confirm || false,
+      enabled: dev.enabled !== false
+    };
+    const newDevice = clear_group_addresses(fullDev);
     newDevice.device_id = `${key}_copy`;
     setCurrentDevice(newDevice);
     setWizardStep(1);
@@ -104,36 +202,158 @@ export default function DevicesPage() {
     setShowWizard(true);
   };
 
+  // Helper to build knx_config_payload on frontend
+  const buildKnxConfigPayload = (device) => {
+    const capabilities = {};
+    if (device.onoff_ga) {
+      capabilities.switch = {
+        write_ga: device.onoff_ga,
+        status_ga: device.status_ga || ''
+      };
+    }
+    if (device.supports_brightness || device.brightness_ga) {
+      capabilities.brightness = {
+        write_ga: device.brightness_ga || '',
+        status_ga: device.brightness_status_ga || '',
+        dpt: '5.001',
+        min: 0,
+        max: 100
+      };
+    }
+    if (device.color_temp_ga) {
+      capabilities.color_temperature = {
+        write_ga: device.color_temp_ga,
+        status_ga: device.color_temp_status_ga || '',
+        dpt: '7.600',
+        min: device.color_temp_min ? parseInt(device.color_temp_min) : 1000,
+        max: device.color_temp_max ? parseInt(device.color_temp_max) : 10000
+      };
+    }
+    if (device.color_rgb_ga) {
+      capabilities.rgb = {
+        write_ga: device.color_rgb_ga,
+        status_ga: device.color_status_ga || '',
+        dpt: '232.600'
+      };
+    }
+    if (device.temperature_set_ga) {
+      capabilities.temperature_setpoint = {
+        write_ga: device.temperature_set_ga,
+        status_ga: device.temperature_status_ga || '',
+        dpt: '9.001',
+        min: 16,
+        max: 30
+      };
+    }
+    if (device.fan_speed_ga) {
+      capabilities.fan_speed = {
+        write_ga: device.fan_speed_ga,
+        dpt: '5.001',
+        min: 0,
+        max: 100
+      };
+    }
+    if (device.mode_ga) {
+      capabilities.mode = {
+        write_ga: device.mode_ga,
+        dpt: '20.105'
+      };
+    }
+    if (device.stop_ga) {
+      capabilities.stop = {
+        write_ga: device.stop_ga,
+        dpt: '1.010'
+      };
+    }
+    if (device.position_set_ga) {
+      capabilities.position = {
+        write_ga: device.position_set_ga,
+        status_ga: device.position_status_ga || '',
+        dpt: '5.001',
+        min: 0,
+        max: 100
+      };
+    }
+    if (device.type === 'sensor' && device.status_ga) {
+      capabilities.sensor_value = {
+        status_ga: device.status_ga
+      };
+    }
+    return { capabilities };
+  };
+
+  // Helper to extract GAs dynamically from a device object (including capabilities)
+  const collectGasFromDevice = (device) => {
+    const gas = [];
+    for (const key of Object.keys(device)) {
+      if (key.endsWith('_ga') && device[key]) {
+        gas.push(device[key]);
+      }
+    }
+    const extractInnerGAs = (obj) => {
+      if (typeof obj === 'object' && obj !== null) {
+        for (const [k, v] of Object.entries(obj)) {
+          if (typeof k === 'string' && (k.endsWith('_ga') || k === 'write_ga' || k === 'status_ga')) {
+            if (v && typeof v === 'string') {
+              gas.push(v);
+            }
+          } else if (typeof v === 'object') {
+            extractInnerGAs(v);
+          }
+        }
+      }
+    };
+
+    let caps = device.capabilities;
+    if (!caps && device.knx_config_payload) {
+      try {
+        const parsed = typeof device.knx_config_payload === 'string'
+          ? JSON.parse(device.knx_config_payload)
+          : device.knx_config_payload;
+        caps = parsed.capabilities || parsed;
+      } catch (e) {}
+    }
+    if (caps) {
+      extractInnerGAs(caps);
+    }
+    return Array.from(new Set(gas.filter(g => typeof g === 'string' && /^\d+\/\d+\/\d+$/.test(g))));
+  };
+
   const validateGAs = () => {
     const warnings = [];
-    const checkGa = (gaField, label) => {
-        const ga = currentDevice[gaField];
-        if (!ga) return;
-        // Check format x/y/z
-        if (!/^\d+\/\d+\/\d+$/.test(ga)) {
-            warnings.push(`${label} (${ga}) does not look like a valid KNX format (e.g., 1/1/1).`);
+    const currentDeviceGAs = collectGasFromDevice(currentDevice);
+
+    // Check format of all entered GAs on currentDevice
+    for (const key of Object.keys(currentDevice)) {
+      if (key.endsWith('_ga') && currentDevice[key]) {
+        const val = currentDevice[key];
+        if (!/^\d+\/\d+\/\d+$/.test(val)) {
+            warnings.push(`${key.replace(/_/g, ' ').toUpperCase()} (${val}) does not look like a valid KNX format (e.g., 1/1/1).`);
         }
-        // Check duplicates in other devices
-        for (const [key, dev] of Object.entries(devices)) {
-            if (key === currentDevice.device_id) continue; // skip self
-            if (dev.onoff_ga === ga || dev.status_ga === ga || dev.brightness_ga === ga || dev.brightness_status_ga === ga) {
-                warnings.push(`Warning: ${ga} is already used by device '${key}'.`);
-            }
+      }
+    }
+
+    // Check duplicates against all existing devices in workspace
+    for (const [key, dev] of Object.entries(devices)) {
+      if (key === currentDevice.device_id) continue;
+      const existingGAs = collectGasFromDevice(dev);
+      for (const ga of currentDeviceGAs) {
+        if (existingGAs.includes(ga)) {
+          warnings.push(`Warning: GA ${ga} is already used by device '${key}'.`);
         }
-    };
-    
-    checkGa('onoff_ga', 'ON/OFF GA');
-    checkGa('status_ga', 'Status GA');
-    checkGa('brightness_ga', 'Brightness GA');
-    checkGa('brightness_status_ga', 'Brightness Status GA');
-    
+      }
+    }
+
     setGaWarnings(warnings);
     return warnings.length === 0;
   };
 
   const nextStep = () => {
       if (wizardStep === 1) {
-          if (!currentDevice.device_id.trim()) return alert("Device ID is required");
+          if (!currentDevice.device_id.trim()) {
+              showDialog("Validation Error", "Device ID is required", "warning");
+              return;
+          }
           setWizardStep(2);
       } else if (wizardStep === 2) {
           validateGAs();
@@ -144,28 +364,29 @@ export default function DevicesPage() {
   const saveAndDeploy = async () => {
       setIsSaving(true);
       try {
-          // Save Device
+          const payloadToSend = { ...currentDevice };
+
+          // Build capability payload
+          const capsRes = buildKnxConfigPayload(currentDevice);
+          payloadToSend.knx_config_payload = capsRes;
+
           const res = await fetch('/api/devices', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: wizardMode, payload: { ...currentDevice, confirmed: true } })
+            body: JSON.stringify({ action: wizardMode, payload: { ...payloadToSend, confirmed: true } })
           });
-          
+
           if (!res.ok) throw new Error(JSON.stringify(await res.json()));
-          
+
           await fetchDevices();
-          
-          // Reload Backend KNX Cache to apply immediately
-          await fetch('/api/system/restart', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ service: 'knx-bridge' })
-          });
-          
-          // Go to Test Step
+
+          // Reload platform registry instead of restarting service
+          await fetch('/api/platform/reload', { method: 'POST' });
+
+          showToast("Device saved & platforms reloaded successfully", "success");
           setWizardStep(4);
       } catch (e) {
-          alert('Error saving device: ' + e.message);
+          showDialog("Save Error", "Error saving device: " + e.message, "danger");
       } finally {
           setIsSaving(false);
       }
@@ -179,9 +400,9 @@ export default function DevicesPage() {
               body: JSON.stringify({ device_id: currentDevice.device_id, action })
           });
           if (!res.ok) throw new Error("Control failed");
-          alert("Command sent successfully!");
+          showToast("Command sent successfully!", "success");
       } catch (e) {
-          alert("Error: " + e.message);
+          showDialog("Control Error", e.message, "danger");
       }
   };
 
@@ -196,8 +417,9 @@ export default function DevicesPage() {
         a.download = 'devices_export.json';
         a.click();
         URL.revokeObjectURL(url);
+        showToast("Devices exported successfully", "success");
     } catch (e) {
-        alert("Export failed: " + e.message);
+        showDialog("Export Error", "Export failed: " + e.message, "danger");
     }
   };
 
@@ -211,19 +433,26 @@ export default function DevicesPage() {
           try {
               const text = event.target.result;
               let parsedDevices = [];
-              const expectedHeaders = ['device_id', 'name', 'room', 'type', 'onoff_ga', 'status_ga', 'brightness_ga', 'brightness_status_ga'];
-              
+              const expectedHeaders = [
+                  'device_id', 'name', 'room', 'type',
+                  'onoff_ga', 'status_ga', 'brightness_ga', 'brightness_status_ga',
+                  'color_ga', 'color_status_ga', 'color_rgb_ga', 'color_temp_ga',
+                  'color_temp_status_ga', 'color_temp_min', 'color_temp_max',
+                  'temperature_set_ga', 'temperature_status_ga', 'fan_speed_ga',
+                  'mode_ga', 'stop_ga', 'position_set_ga', 'position_status_ga',
+                  'knx_config_payload', 'aliases', 'role', 'safety_level', 'require_confirm', 'enabled'
+              ];
+
               if (file.name.endsWith('.csv')) {
                   const lines = text.split('\n');
                   const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-                  
+
                   if (!headers.includes('device_id')) {
                       throw new Error("CSV must have a 'device_id' column");
                   }
-                  
+
                   for (let i = 1; i < lines.length; i++) {
                       if (!lines[i].trim()) continue;
-                      // Simple split by comma, assuming no complex quotes in CSV for this simple format
                       const cols = lines[i].split(',').map(c => c.trim());
                       let dev = {};
                       headers.forEach((h, idx) => {
@@ -236,7 +465,7 @@ export default function DevicesPage() {
                       }
                   }
               } else {
-                  // JSON format fallback
+                  // JSON format
                   const payload = JSON.parse(text);
                   if (!Array.isArray(payload)) {
                       parsedDevices = Object.keys(payload).map(k => ({ device_id: k, ...payload[k] }));
@@ -244,54 +473,58 @@ export default function DevicesPage() {
                       parsedDevices = payload;
                   }
               }
-              
+
               // Validate and check conflicts
               const conflicts = [];
               const allUsedGAs = new Set();
               Object.values(devices).forEach(d => {
-                  if (d.onoff_ga) allUsedGAs.add(d.onoff_ga);
-                  if (d.status_ga) allUsedGAs.add(d.status_ga);
-                  if (d.brightness_ga) allUsedGAs.add(d.brightness_ga);
-                  if (d.brightness_status_ga) allUsedGAs.add(d.brightness_status_ga);
+                  collectGasFromDevice(d).forEach(ga => allUsedGAs.add(ga));
               });
 
               parsedDevices.forEach(d => {
                   if (devices[d.device_id]) {
                       conflicts.push(`Device ID '${d.device_id}' already exists.`);
                   }
-                  const checkGa = (gaField, label) => {
-                      const ga = d[gaField];
-                      if (!ga) return;
+
+                  const deviceGAs = collectGasFromDevice(d);
+                  deviceGAs.forEach(ga => {
                       if (!/^\d+\/\d+\/\d+$/.test(ga)) {
-                          conflicts.push(`Device '${d.device_id}': ${label} (${ga}) has invalid KNX format.`);
+                          conflicts.push(`Device '${d.device_id}': GA (${ga}) has invalid KNX format.`);
                       } else if (allUsedGAs.has(ga)) {
-                          conflicts.push(`Device '${d.device_id}': ${label} (${ga}) is already used by an existing device.`);
+                          conflicts.push(`Device '${d.device_id}': GA (${ga}) is already used by an existing device.`);
                       }
-                      allUsedGAs.add(ga); // track within import batch as well
-                  };
-                  checkGa('onoff_ga', 'ON/OFF GA');
-                  checkGa('status_ga', 'Status GA');
-                  checkGa('brightness_ga', 'Brightness GA');
-                  checkGa('brightness_status_ga', 'Brightness Status GA');
+                      allUsedGAs.add(ga);
+                  });
               });
-              
+
               setImportReview({ devices: parsedDevices, conflicts });
-              
+
           } catch (err) {
-              alert("Import Parse Error: " + err.message);
+              showDialog("Import Parse Error", err.message, "danger");
           }
       };
       reader.readAsText(file);
       e.target.value = null; // reset input
   };
-  
+
   const confirmImport = async (mode) => {
       if (!importReview) return;
       try {
           setIsSaving(true);
+
+          // Ensure each imported device has correct knx_config_payload built from discrete fields
+          const devicesToSend = importReview.devices.map(d => {
+              const copy = { ...d };
+              if (!copy.knx_config_payload || copy.knx_config_payload === '{}') {
+                  const caps = buildKnxConfigPayload(copy);
+                  copy.knx_config_payload = caps;
+              }
+              return copy;
+          });
+
           const payload = {
-              mode: mode, // 'merge' or 'overwrite'
-              devices: importReview.devices
+              mode: mode,
+              devices: devicesToSend
           };
           const res = await fetch('/api/devices/import', {
               method: 'POST',
@@ -299,8 +532,7 @@ export default function DevicesPage() {
               body: JSON.stringify(payload)
           });
           if (res.ok) {
-              alert("Import successful! Reloading...");
-              // Reload platform to ensure new devices are in memory
+              showToast("Import successful! Reloading...", "success");
               await fetch('/api/platform/reload', { method: 'POST' });
               await fetchDevices();
               setImportReview(null);
@@ -308,123 +540,161 @@ export default function DevicesPage() {
               throw new Error(await res.text());
           }
       } catch (err) {
-          alert("Import failed: " + err.message);
+          showDialog("Import Error", "Import failed: " + err.message, "danger");
       } finally {
           setIsSaving(false);
       }
   };
 
   return (
-    <>
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+    <div className="page-container animate-fade-in flex flex-col h-full max-h-full">
+      <header className="flex justify-between items-center mb-8">
         <div>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: '600' }}>Device Management</h2>
-          <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>Quản lý {Object.keys(devices).length} thiết bị KNX</p>
+          <h2 className="text-2xl font-semibold mb-1 text-[var(--text-primary)]">Device Management</h2>
+          <p className="text-sm text-[var(--text-secondary)]">Quản lý {Object.keys(devices).length} thiết bị KNX</p>
         </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <input type="file" id="import-file" style={{ display: 'none' }} accept=".json,.csv" onChange={importDevices} />
-          <button style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer' }} onClick={() => document.getElementById('import-file').click()}>
+        <div className="flex gap-4">
+          <input type="file" id="import-file" className="hidden" accept=".json,.csv,.knxproj" onChange={importDevices} />
+          <button className="btn-secondary" onClick={() => document.getElementById('import-file').click()}>
             📥 Import
           </button>
-          <button style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer' }} onClick={exportDevices}>
+          <button className="btn-secondary" onClick={exportDevices}>
             📤 Export
           </button>
-          <button className="nav-item active" style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer' }} onClick={openAddWizard}>
+          <button className="btn-primary" onClick={openAddWizard}>
             + Add Device Wizard
           </button>
         </div>
       </header>
 
       {loading ? (
-        <div style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>Loading devices...</div>
+        <div className="empty-state">
+          <div className="skeleton w-32 h-8 mb-4"></div>
+          <div>Loading devices...</div>
+        </div>
+      ) : Object.keys(devices).length === 0 ? (
+        <div className="empty-state glass-panel">
+          <h3 className="text-xl mb-2 text-white">No Devices Found</h3>
+          <p className="text-[var(--text-secondary)]">Import an ETS project or add a device manually to get started.</p>
+        </div>
       ) : (
-        <div className="glass-panel" style={{ padding: '20px', overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                <th style={{ padding: '12px' }}>Device ID</th>
-                <th style={{ padding: '12px' }}>Type</th>
-                <th style={{ padding: '12px' }}>Group Addresses</th>
-                <th style={{ padding: '12px' }}>Status</th>
-                <th style={{ padding: '12px' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {Object.entries(devices).map(([key, dev]) => (
-                <tr key={key} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                  <td style={{ padding: '12px', fontWeight: '500' }}>{key}</td>
-                  <td style={{ padding: '12px' }}>
-                    <span style={{ padding: '4px 8px', background: 'rgba(255,255,255,0.1)', borderRadius: '12px', fontSize: '0.8rem' }}>
-                      {dev.type || 'light'}
-                    </span>
-                  </td>
-                  <td style={{ padding: '12px', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-                    ON/OFF: {dev.onoff_ga || 'N/A'}<br/>
-                    Status: {dev.status_ga || 'N/A'}
-                  </td>
-                  <td style={{ padding: '12px' }}>
-                    {dev.disabled ? (
-                      <span style={{ color: '#ef4444', fontSize: '0.9rem' }}>Disabled</span>
-                    ) : (
-                      <span style={{ color: '#10b981', fontSize: '0.9rem' }}>Active</span>
-                    )}
-                  </td>
-                  <td style={{ padding: '12px', display: 'flex', gap: '8px' }}>
-                    <a href={`/devices/${key}`} style={{ background: '#3b82f6', border: 'none', color: '#fff', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer', textDecoration: 'none', fontSize: '0.9rem' }}>🔍 Details</a>
-                    <button style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer' }} onClick={() => openEditWizard(key, dev)}>Edit</button>
-                    <button style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer' }} onClick={() => duplicateDevice(key, dev)}>Duplicate</button>
-                    <button style={{ background: 'transparent', border: '1px solid #ef4444', color: '#ef4444', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer' }} onClick={() => handleAction('delete', { device_id: key })}>Delete</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="flex flex-col gap-4 flex-1 overflow-hidden" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+          {/* Filters */}
+          <div className="flex gap-4 mb-2">
+            <input
+              type="text"
+              placeholder="Search devices..."
+              className="input-primary"
+              style={{ maxWidth: '300px' }}
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+            />
+          </div>
+
+          <div className="glass-panel overflow-hidden flex-1 flex flex-col" style={{ padding: '0', borderRadius: '16px', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+            <div className="overflow-x-auto overflow-y-auto flex-1 custom-scrollbar" style={{ flex: 1 }}>
+              <table className="w-full text-left whitespace-nowrap" style={{ fontSize: '15px' }}>
+                <thead className="sticky top-0 z-10 shadow-sm" style={{ backgroundColor: '#13151a' }}>
+                  <tr>
+                    <th className="font-medium uppercase tracking-wider text-[var(--text-secondary)]" style={{ padding: '16px', fontSize: '13px' }}>Device ID</th>
+                    <th className="font-medium uppercase tracking-wider text-[var(--text-secondary)]" style={{ padding: '16px', fontSize: '13px' }}>Type</th>
+                    <th className="font-medium uppercase tracking-wider text-[var(--text-secondary)]" style={{ padding: '16px', fontSize: '13px' }}>Group Addresses</th>
+                    <th className="font-medium uppercase tracking-wider text-[var(--text-secondary)]" style={{ padding: '16px', fontSize: '13px' }}>Status</th>
+                    <th className="font-medium uppercase tracking-wider text-[var(--text-secondary)]" style={{ padding: '16px', fontSize: '13px' }}>Source</th>
+                    <th className="font-medium uppercase tracking-wider text-[var(--text-secondary)] text-right" style={{ padding: '16px', fontSize: '13px' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--border)]">
+                  {Object.entries(devices).filter(([key]) => key.toLowerCase().includes(searchQuery.toLowerCase())).map(([key, dev]) => (
+                    <tr key={key} className="hover:bg-[var(--bg-hover)] transition-colors">
+                    <td className="font-medium text-[var(--text-primary)]" style={{ padding: '16px' }}>{key}</td>
+                    <td style={{ padding: '16px' }}>
+                      <span className="badge badge-online" style={{ padding: '4px 10px', fontSize: '13px' }}>
+                        {dev.type || 'light'}
+                      </span>
+                    </td>
+                    <td className="text-[var(--text-secondary)]" style={{ padding: '16px', fontSize: '14px', lineHeight: '1.5' }}>
+                      ON/OFF: <span className="text-white font-medium">{dev.onoff_ga || 'N/A'}</span><br/>
+                      Status: <span className="text-white font-medium">{dev.status_ga || 'N/A'}</span>
+                    </td>
+                    <td style={{ padding: '16px' }}>
+                      {dev.disabled ? (
+                        <span className="badge badge-offline">Disabled</span>
+                      ) : (
+                        <span className="badge badge-online">Active</span>
+                      )}
+                    </td>
+                    <td style={{ padding: '16px' }}>
+                      {dev.knx_config_payload ? (
+                        <span className="badge" style={{ background: 'var(--accent-soft)', color: 'var(--accent)', padding: '4px 10px', fontSize: '13px' }}>ETS6</span>
+                      ) : (
+                        <span className="badge" style={{ background: 'var(--bg-hover)', color: 'var(--text-secondary)', padding: '4px 10px', fontSize: '13px' }}>Manual</span>
+                      )}
+                    </td>
+                    <td className="text-right" style={{ padding: '16px' }}>
+                      <div className="relative inline-block group">
+                        <button className="btn-secondary px-2 py-1">⋮</button>
+                        <div className="absolute right-0 mt-2 w-32 bg-[var(--bg-elevated)] border border-[var(--border)] rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 flex flex-col py-1">
+                          <a href={`/devices/${key}`} className="px-4 py-2 text-sm text-left hover:bg-[var(--bg-hover)] text-white text-decoration-none">🔍 Details</a>
+                          <button className="px-4 py-2 text-sm text-left hover:bg-[var(--bg-hover)] text-white" onClick={() => openEditWizard(key, dev)}>✏️ Edit</button>
+                          <button className="px-4 py-2 text-sm text-left hover:bg-[var(--bg-hover)] text-white" onClick={() => duplicateDevice(key, dev)}>📋 Duplicate</button>
+                          <div className="border-t border-[var(--border)] my-1"></div>
+                          <button className="px-4 py-2 text-sm text-left hover:bg-[var(--bg-hover)] text-[var(--danger)]" onClick={() => handleAction('delete', { device_id: key })}>🗑️ Delete</button>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
         </div>
       )}
 
-            {/* IMPORT REVIEW MODAL */}
+      {/* IMPORT REVIEW MODAL */}
       {importReview && (
-          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-             <div className="glass-panel" style={{ padding: '24px', width: '600px', maxWidth: '90%', maxHeight: '80vh', overflowY: 'auto' }}>
-                 <h3 style={{ marginBottom: '16px', color: '#10b981' }}>Review Import ({importReview.devices.length} devices)</h3>
-                 
+          <div className="dialog-overlay">
+             <div className="dialog-content" style={{ width: '600px', maxWidth: '90%', maxHeight: '80vh', overflowY: 'auto' }}>
+                 <h3 className="text-xl mb-4 text-[var(--success)]">Review Import ({importReview.devices.length} devices)</h3>
+
                  {importReview.conflicts.length > 0 && (
-                     <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid #ef4444', padding: '12px', borderRadius: '6px', marginBottom: '16px' }}>
-                         <strong style={{ color: '#ef4444', fontSize: '0.9rem' }}>⚠️ Conflicts Detected:</strong>
-                         <ul style={{ margin: '8px 0 0 16px', padding: 0, fontSize: '0.85rem', color: '#fca5a5' }}>
+                     <div style={{ background: 'rgba(231, 101, 107, 0.1)', border: '1px solid var(--danger)', padding: '12px', borderRadius: 'var(--radius-sm)', marginBottom: '16px' }}>
+                         <strong className="text-[var(--danger)] text-sm">⚠️ Conflicts Detected:</strong>
+                         <ul className="mt-2 pl-4 text-xs text-[var(--danger)]">
                              {importReview.conflicts.slice(0, 5).map((c, i) => <li key={i}>{c}</li>)}
                              {importReview.conflicts.length > 5 && <li>... and {importReview.conflicts.length - 5} more</li>}
                          </ul>
                      </div>
                  )}
-                 
-                 <div style={{ maxHeight: '300px', overflowY: 'auto', background: 'rgba(0,0,0,0.3)', padding: '12px', borderRadius: '6px', marginBottom: '16px' }}>
-                    <table style={{ width: '100%', fontSize: '0.85rem', textAlign: 'left' }}>
+
+                 <div className="custom-scrollbar" style={{ maxHeight: '300px', overflowY: 'auto', background: 'rgba(0,0,0,0.3)', padding: '12px', borderRadius: 'var(--radius-sm)', marginBottom: '16px' }}>
+                    <table className="w-full text-sm text-left">
                         <thead>
-                            <tr style={{ color: 'var(--text-secondary)' }}>
-                                <th>Device ID</th>
-                                <th>Type</th>
-                                <th>ON/OFF GA</th>
+                            <tr className="text-[var(--text-secondary)]">
+                                <th className="pb-2">Device ID</th>
+                                <th className="pb-2">Type</th>
+                                <th className="pb-2">ON/OFF GA</th>
                             </tr>
                         </thead>
                         <tbody>
                             {importReview.devices.map((d, i) => (
-                                <tr key={i}>
-                                    <td style={{ color: devices[d.device_id] ? '#ef4444' : '#10b981' }}>{d.device_id}</td>
-                                    <td>{d.type || 'light'}</td>
-                                    <td>{d.onoff_ga}</td>
+                                <tr key={i} className="border-t border-[var(--border)]">
+                                    <td className="py-2" style={{ color: devices[d.device_id] ? 'var(--danger)' : 'var(--success)' }}>{d.device_id}</td>
+                                    <td className="py-2">{d.type || 'light'}</td>
+                                    <td className="py-2">{d.onoff_ga}</td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
                  </div>
-                 
-                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
-                     <button onClick={() => setImportReview(null)} style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', borderRadius: '6px', padding: '10px 16px', cursor: 'pointer' }}>Cancel</button>
-                     <div style={{ display: 'flex', gap: '12px' }}>
-                         <button onClick={() => confirmImport('skip')} disabled={isSaving} style={{ background: '#64748b', border: 'none', color: '#fff', borderRadius: '6px', padding: '10px 16px', cursor: 'pointer' }}>Skip</button>
-                         <button onClick={() => confirmImport('overwrite')} disabled={isSaving} style={{ background: '#ef4444', border: 'none', color: '#fff', borderRadius: '6px', padding: '10px 16px', cursor: 'pointer' }}>Overwrite</button>
-                         <button onClick={() => confirmImport('rename')} disabled={isSaving} style={{ background: '#10b981', border: 'none', color: '#fff', borderRadius: '6px', padding: '10px 16px', cursor: 'pointer' }}>Rename</button>
+
+                 <div className="flex justify-between gap-3 mt-4">
+                     <button onClick={() => setImportReview(null)} className="btn-secondary">Cancel</button>
+                     <div className="flex gap-3">
+                         <button onClick={() => confirmImport('skip')} disabled={isSaving} className="btn-secondary">Skip</button>
+                         <button onClick={() => confirmImport('overwrite')} disabled={isSaving} className="btn-secondary" style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }}>Overwrite</button>
+                         <button onClick={() => confirmImport('rename')} disabled={isSaving} className="btn-primary">Rename</button>
                      </div>
                  </div>
              </div>
@@ -433,16 +703,16 @@ export default function DevicesPage() {
 
       {/* WIZARD MODAL */}
       {showWizard && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div className="glass-panel" style={{ padding: '0', width: '500px', maxWidth: '90%', display: 'flex', flexDirection: 'column' }}>
-            
+        <div className="dialog-overlay">
+          <div className="dialog-content" style={{ padding: '0', width: '500px', maxWidth: '90%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
             {/* Header */}
-            <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 style={{ fontSize: '1.2rem', margin: 0 }}>
-                    {wizardMode === 'add' ? '✨ Device Wizard' : '✏️ Edit Device Wizard'}
+            <div style={{ padding: '16px 24px' }} className="border-b border-[var(--border)] flex justify-between items-center">
+                <h3 className="text-xl m-0 text-[var(--accent)] font-semibold">
+                    {wizardMode === 'add' ? 'Device Wizard' : 'Edit Device Wizard'}
                 </h3>
                 {wizardStep !== 4 && (
-                    <button onClick={() => setShowWizard(false)} style={{ background: 'transparent', border: 'none', color: '#fff', fontSize: '1.5rem', cursor: 'pointer', lineHeight: 1 }}>&times;</button>
+                    <button onClick={() => setShowWizard(false)} className="text-2xl text-[var(--text-secondary)] hover:text-white leading-none">&times;</button>
                 )}
             </div>
 
@@ -460,32 +730,36 @@ export default function DevicesPage() {
 
             {/* Body */}
             <div style={{ padding: '24px', minHeight: '250px' }}>
-                
+
                 {wizardStep === 1 && (
-                    <div className="wizard-step" style={{ animation: 'fadeIn 0.3s' }}>
-                        <h4 style={{ marginBottom: '16px', color: '#3b82f6' }}>Step 1: Basic Information</h4>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    <div className="animate-fade-in">
+                        <h4 className="mb-4 text-[var(--accent)] font-medium">Step 1: Basic Information</h4>
+                        <div className="flex flex-col gap-4">
                             <div>
-                                <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Device ID</label>
-                                <input 
-                                    placeholder="e.g. living_light_1" 
-                                    value={currentDevice.device_id} 
+                                <label className="block mb-2 text-sm text-[var(--text-secondary)]">Device ID</label>
+                                <input
+                                    className="input-primary"
+                                    placeholder="e.g. living_light_1"
+                                    value={currentDevice.device_id}
                                     onChange={e => setCurrentDevice({...currentDevice, device_id: e.target.value})}
-                                    style={{ width: '100%', padding: '10px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', borderRadius: '6px' }}
                                     disabled={wizardMode === 'update'}
                                 />
-                                {wizardMode === 'update' && <small style={{ color: '#ef4444', marginTop: '4px', display: 'block' }}>Cannot change ID of existing device.</small>}
+                                {wizardMode === 'update' && <small className="text-[var(--danger)] mt-1 block">Cannot change ID of existing device.</small>}
                             </div>
                             <div>
                                 <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Device Type</label>
-                                <select 
+                                <select
+                                    className="input-primary"
                                     value={currentDevice.type}
                                     onChange={e => setCurrentDevice({...currentDevice, type: e.target.value})}
-                                    style={{ width: '100%', padding: '10px', background: '#252525', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', borderRadius: '6px' }}>
+                                >
                                     <option value="light">Light (Switchable)</option>
                                     <option value="dimmer">Dimmer (Light + Brightness)</option>
-                                    <option value="switch">Switch / Relay</option>
-                                    <option value="blind">Window Blind</option>
+                                    <option value="color_light">RGB/Color Light</option>
+                                    <option value="ac">HVAC / Air Conditioner</option>
+                                    <option value="curtain">Curtain / Window Blind</option>
+                                    <option value="appliance">Smart Plug / Appliance</option>
+                                    <option value="sensor">Sensor</option>
                                 </select>
                             </div>
                         </div>
@@ -496,26 +770,83 @@ export default function DevicesPage() {
                     <div className="wizard-step" style={{ animation: 'fadeIn 0.3s' }}>
                         <h4 style={{ marginBottom: '16px', color: '#3b82f6' }}>Step 2: Group Addresses</h4>
                         <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '16px' }}>Enter the physical KNX Group Addresses (Format: x/y/z).</p>
-                        
+
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            {currentDevice.type !== 'sensor' && (
+                                <div>
+                                    <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.85rem' }}>ON/OFF Address *</label>
+                                    <input className="input-primary" placeholder="1/1/1" value={currentDevice.onoff_ga} onChange={e => setCurrentDevice({...currentDevice, onoff_ga: e.target.value})} />
+                                </div>
+                            )}
                             <div>
-                                <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.85rem' }}>ON/OFF Address *</label>
-                                <input placeholder="1/1/1" value={currentDevice.onoff_ga} onChange={e => setCurrentDevice({...currentDevice, onoff_ga: e.target.value})} style={{ width: '100%', padding: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', borderRadius: '4px' }} />
+                                <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.85rem' }}>{currentDevice.type === 'sensor' ? 'Sensor Value Address *' : 'State/Status Address'}</label>
+                                <input className="input-primary" placeholder="1/1/2" value={currentDevice.status_ga} onChange={e => setCurrentDevice({...currentDevice, status_ga: e.target.value})} />
                             </div>
-                            <div>
-                                <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.85rem' }}>State/Status Address (Optional)</label>
-                                <input placeholder="1/1/2" value={currentDevice.status_ga} onChange={e => setCurrentDevice({...currentDevice, status_ga: e.target.value})} style={{ width: '100%', padding: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', borderRadius: '4px' }} />
-                            </div>
-                            
-                            {currentDevice.type === 'dimmer' && (
+
+                            {(currentDevice.type === 'dimmer' || currentDevice.type === 'color_light') && (
                                 <>
                                     <div>
                                         <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.85rem' }}>Brightness Set Address</label>
-                                        <input placeholder="1/1/3" value={currentDevice.brightness_ga} onChange={e => setCurrentDevice({...currentDevice, brightness_ga: e.target.value})} style={{ width: '100%', padding: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', borderRadius: '4px' }} />
+                                        <input className="input-primary" placeholder="1/1/3" value={currentDevice.brightness_ga} onChange={e => setCurrentDevice({...currentDevice, brightness_ga: e.target.value})} />
                                     </div>
                                     <div>
                                         <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.85rem' }}>Brightness Status Address</label>
-                                        <input placeholder="1/1/4" value={currentDevice.brightness_status_ga} onChange={e => setCurrentDevice({...currentDevice, brightness_status_ga: e.target.value})} style={{ width: '100%', padding: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', borderRadius: '4px' }} />
+                                        <input className="input-primary" placeholder="1/1/4" value={currentDevice.brightness_status_ga} onChange={e => setCurrentDevice({...currentDevice, brightness_status_ga: e.target.value})} />
+                                    </div>
+                                </>
+                            )}
+
+                            {currentDevice.type === 'color_light' && (
+                                <>
+                                    <div>
+                                        <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.85rem' }}>RGB/HSV Color Address</label>
+                                        <input className="input-primary" placeholder="1/1/5" value={currentDevice.color_rgb_ga} onChange={e => setCurrentDevice({...currentDevice, color_rgb_ga: e.target.value})} />
+                                    </div>
+                                    <div>
+                                        <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.85rem' }}>Color Temperature (White) Address</label>
+                                        <input className="input-primary" placeholder="1/1/6" value={currentDevice.color_temp_ga} onChange={e => setCurrentDevice({...currentDevice, color_temp_ga: e.target.value})} />
+                                    </div>
+                                </>
+                            )}
+
+                            {currentDevice.type === 'ac' && (
+                                <>
+                                    <div>
+                                        <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.85rem' }}>Temperature Setpoint Address</label>
+                                        <input className="input-primary" placeholder="2/1/1" value={currentDevice.temperature_set_ga} onChange={e => setCurrentDevice({...currentDevice, temperature_set_ga: e.target.value})} />
+                                    </div>
+                                    <div>
+                                        <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.85rem' }}>Current Temperature (Sensor) Address</label>
+                                        <input className="input-primary" placeholder="2/1/2" value={currentDevice.temperature_status_ga} onChange={e => setCurrentDevice({...currentDevice, temperature_status_ga: e.target.value})} />
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '12px' }}>
+                                        <div style={{ flex: 1 }}>
+                                            <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.85rem' }}>Fan Speed Address</label>
+                                            <input className="input-primary" placeholder="2/1/3" value={currentDevice.fan_speed_ga} onChange={e => setCurrentDevice({...currentDevice, fan_speed_ga: e.target.value})} />
+                                        </div>
+                                        <div style={{ flex: 1 }}>
+                                            <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.85rem' }}>HVAC Mode Address</label>
+                                            <input className="input-primary" placeholder="2/1/4" value={currentDevice.mode_ga} onChange={e => setCurrentDevice({...currentDevice, mode_ga: e.target.value})} />
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+
+                            {currentDevice.type === 'curtain' && (
+                                <>
+                                    <div>
+                                        <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.85rem' }}>Stop / Step Address (Crucial)</label>
+                                        <input className="input-primary" placeholder="3/1/1" value={currentDevice.stop_ga} onChange={e => setCurrentDevice({...currentDevice, stop_ga: e.target.value})} />
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '12px' }}>
+                                        <div style={{ flex: 1 }}>
+                                            <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.85rem' }}>Position Set Address (%)</label>
+                                            <input className="input-primary" placeholder="3/1/2" value={currentDevice.position_set_ga} onChange={e => setCurrentDevice({...currentDevice, position_set_ga: e.target.value})} />
+                                        </div>
+                                        <div style={{ flex: 1 }}>
+                                            <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.85rem' }}>Position Status Address</label>
+                                            <input className="input-primary" placeholder="3/1/3" value={currentDevice.position_status_ga} onChange={e => setCurrentDevice({...currentDevice, position_status_ga: e.target.value})} />
+                                        </div>
                                     </div>
                                 </>
                             )}
@@ -526,7 +857,7 @@ export default function DevicesPage() {
                 {wizardStep === 3 && (
                     <div className="wizard-step" style={{ animation: 'fadeIn 0.3s' }}>
                         <h4 style={{ marginBottom: '16px', color: '#10b981' }}>Step 3: Review & Save</h4>
-                        
+
                         {gaWarnings.length > 0 && (
                             <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid #ef4444', padding: '12px', borderRadius: '6px', marginBottom: '16px' }}>
                                 <strong style={{ color: '#ef4444', fontSize: '0.9rem' }}>⚠️ Validation Warnings:</strong>
@@ -556,14 +887,14 @@ export default function DevicesPage() {
                         <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '24px' }}>
                             The backend cache has been reloaded. You can now physically test the device below.
                         </p>
-                        
+
                         <div style={{ background: 'rgba(255,255,255,0.05)', padding: '24px', borderRadius: '8px', display: 'flex', justifyContent: 'center', gap: '16px' }}>
-                            <button 
+                            <button
                                 onClick={() => testDeviceControl('on')}
                                 style={{ background: '#10b981', color: '#fff', border: 'none', padding: '12px 32px', borderRadius: '8px', fontSize: '1.1rem', cursor: 'pointer', fontWeight: 'bold' }}>
                                 TURN ON
                             </button>
-                            <button 
+                            <button
                                 onClick={() => testDeviceControl('off')}
                                 style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '12px 32px', borderRadius: '8px', fontSize: '1.1rem', cursor: 'pointer', fontWeight: 'bold' }}>
                                 TURN OFF
@@ -581,15 +912,15 @@ export default function DevicesPage() {
                 ) : (
                     <>
                         {wizardStep > 1 ? (
-                            <button onClick={() => setWizardStep(wizardStep - 1)} style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', borderRadius: '6px', padding: '8px 24px', cursor: 'pointer' }}>Back</button>
+                            <button onClick={() => setWizardStep(wizardStep - 1)} className="btn-secondary">Back</button>
                         ) : <div></div>}
 
                         {wizardStep === 3 ? (
-                            <button onClick={saveAndDeploy} disabled={isSaving} style={{ background: '#10b981', border: 'none', color: '#fff', borderRadius: '6px', padding: '8px 24px', cursor: 'pointer', fontWeight: 'bold', opacity: isSaving ? 0.7 : 1 }}>
+                            <button onClick={saveAndDeploy} disabled={isSaving} className="btn-primary" style={{ background: '#10b981', color: 'white' }}>
                                 {isSaving ? 'Deploying...' : 'Save & Deploy'}
                             </button>
                         ) : (
-                            <button onClick={nextStep} style={{ background: '#3b82f6', border: 'none', color: '#fff', borderRadius: '6px', padding: '8px 24px', cursor: 'pointer', fontWeight: 'bold' }}>Next</button>
+                            <button onClick={nextStep} className="btn-primary">Next</button>
                         )}
                     </>
                 )}
@@ -598,6 +929,6 @@ export default function DevicesPage() {
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }

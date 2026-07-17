@@ -1,21 +1,35 @@
-
-*.db
-*.log
+# Python/runtime
+__pycache__/
 *.pyc
-*.sqlite
-*.sqlite3
+*.py[cod]
 .pytest_cache/
 .venv/
-__pycache__/
-backups/
-credentials/
-data/
-logs/
-sessions/
 venv/
-*.py[cod]
+
+# Databases and runtime data
+*.db
+*.sqlite
+*.sqlite3
+data/
+sessions/
+
+# Logs / temp / backups
+*.log
+logs/
+backups/
+tmp_knxproj/
+*.pid
+
+# Secrets / credentials
+.env
+.env.*
+credentials/
 all_api_keys_backup.txt
 *_api_keys_backup*
 *secrets*
-.env
-.env.*
+
+# Frontend
+frontend/.next/
+frontend/node_modules/
+frontend/*.pid
+frontend/*.log

@@ -198,7 +198,7 @@ def load_devices() -> dict:
     db_path = BASE_DIR / "smarthome.db"
     if not db_path.exists():
         return {}
-        
+
     try:
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row
@@ -206,7 +206,7 @@ def load_devices() -> dict:
         cursor.execute("SELECT * FROM devices")
         rows = cursor.fetchall()
         conn.close()
-        
+
         devices = {}
         for row in rows:
             d = dict(row)
@@ -217,6 +217,17 @@ def load_devices() -> dict:
             d["supports_brightness"] = bool(d["supports_brightness"])
             d["require_confirm"] = bool(d["require_confirm"])
             d["enabled"] = bool(d["enabled"])
+
+            # Parse knx_config_payload if available
+            if "knx_config_payload" in d:
+                payload_raw = d["knx_config_payload"]
+                try:
+                    d["knx_config_payload"] = json.loads(payload_raw) if isinstance(payload_raw, str) else payload_raw
+                except Exception:
+                    d["knx_config_payload"] = {}
+            else:
+                d["knx_config_payload"] = {}
+
             devices[d["device_id"]] = d
         return devices
     except Exception as e:
@@ -227,6 +238,17 @@ def save_devices():
     db_path = BASE_DIR / "smarthome.db"
     conn = sqlite3.connect(str(db_path))
     cursor = conn.cursor()
+
+    # Check if knx_config_payload column exists to fail clearly if migration is missing
+    cursor.execute("PRAGMA table_info(devices)")
+    columns = [col[1] for col in cursor.fetchall()]
+    if "knx_config_payload" not in columns:
+        conn.close()
+        raise sqlite3.OperationalError(
+            "Database table 'devices' is missing the 'knx_config_payload' column. "
+            "Please run the database migration script: python3 scripts/migrate_device_capabilities.py"
+        )
+
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS devices (
             device_id TEXT PRIMARY KEY,
@@ -244,21 +266,30 @@ def save_devices():
             aliases TEXT,
             safety_level TEXT,
             require_confirm BOOLEAN,
-            enabled BOOLEAN
+            enabled BOOLEAN,
+            knx_config_payload TEXT
         )
     ''')
-    
+
     for device_id, data in DEVICES.items():
         aliases_json = json.dumps(data.get("aliases", []), ensure_ascii=False)
+        payload = data.get("knx_config_payload")
+        if isinstance(payload, dict):
+            payload_json = json.dumps(payload, ensure_ascii=False)
+        elif isinstance(payload, str):
+            payload_json = payload
+        else:
+            payload_json = "{}"
+
         cursor.execute('''
             INSERT OR REPLACE INTO devices (
-                device_id, name, room, type, 
-                onoff_ga, status_ga, supports_brightness, 
-                brightness_ga, brightness_status_ga, 
-                color_ga, color_status_ga, 
-                role, aliases, safety_level, 
-                require_confirm, enabled
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                device_id, name, room, type,
+                onoff_ga, status_ga, supports_brightness,
+                brightness_ga, brightness_status_ga,
+                color_ga, color_status_ga,
+                role, aliases, safety_level,
+                require_confirm, enabled, knx_config_payload
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             device_id,
             data.get("name", "Unknown"),
@@ -275,9 +306,10 @@ def save_devices():
             aliases_json,
             data.get("safety_level"),
             bool(data.get("require_confirm", False)),
-            bool(data.get("enabled", True))
+            bool(data.get("enabled", True)),
+            payload_json
         ))
-    
+
     conn.commit()
     conn.close()
 
@@ -340,6 +372,125 @@ class AskAICommand(BaseModel):
     session_id: str = "default"
 
 
+def normalize_device_capabilities(device_data: dict) -> dict:
+    payload_raw = device_data.get("knx_config_payload") or device_data.get("capabilities")
+    capabilities = {}
+    if payload_raw:
+        try:
+            parsed = json.loads(payload_raw) if isinstance(payload_raw, str) else payload_raw
+            if isinstance(parsed, dict):
+                capabilities = parsed.get("capabilities", parsed)
+            else:
+                capabilities = {}
+        except Exception:
+            pass
+
+    if not isinstance(capabilities, dict):
+        capabilities = {}
+
+    def set_cap(cap_name: str, key_map: dict):
+        has_vals = False
+        cap_details = capabilities.get(cap_name, {})
+        if not isinstance(cap_details, dict):
+            cap_details = {}
+        for cap_key, data_key in key_map.items():
+            if isinstance(data_key, (list, tuple)):
+                val = None
+                for dk in data_key:
+                    v = device_data.get(dk)
+                    if v is not None and v != "":
+                        val = v
+                        break
+            else:
+                val = device_data.get(data_key)
+
+            if val is not None and val != "":
+                cap_details[cap_key] = val
+                has_vals = True
+        if has_vals:
+            capabilities[cap_name] = cap_details
+
+    set_cap("switch", {
+        "write_ga": "onoff_ga",
+        "status_ga": "status_ga"
+    })
+
+    if device_data.get("supports_brightness") or device_data.get("brightness_ga"):
+        set_cap("brightness", {
+            "write_ga": "brightness_ga",
+            "status_ga": "brightness_status_ga"
+        })
+        if "brightness" in capabilities:
+            capabilities["brightness"].setdefault("dpt", "5.001")
+            capabilities["brightness"].setdefault("min", 0)
+            capabilities["brightness"].setdefault("max", 100)
+
+    set_cap("color_temperature", {
+        "write_ga": "color_temp_ga",
+        "status_ga": "color_temp_status_ga",
+        "min": "color_temp_min",
+        "max": "color_temp_max"
+    })
+    if "color_temperature" in capabilities:
+        capabilities["color_temperature"].setdefault("dpt", "7.600")
+        if capabilities["color_temperature"].get("min") is None:
+            capabilities["color_temperature"]["min"] = 1000
+        if capabilities["color_temperature"].get("max") is None:
+            capabilities["color_temperature"]["max"] = 10000
+
+    set_cap("rgb", {
+        "write_ga": ("color_rgb_ga", "color_ga"),
+        "status_ga": "color_status_ga"
+    })
+    if "rgb" in capabilities:
+        capabilities["rgb"].setdefault("dpt", "232.600")
+
+    set_cap("temperature_setpoint", {
+        "write_ga": "temperature_set_ga",
+        "status_ga": "temperature_status_ga"
+    })
+    if "temperature_setpoint" in capabilities:
+        capabilities["temperature_setpoint"].setdefault("dpt", "9.001")
+        capabilities["temperature_setpoint"].setdefault("min", 16)
+        capabilities["temperature_setpoint"].setdefault("max", 30)
+
+    set_cap("fan_speed", {
+        "write_ga": "fan_speed_ga"
+    })
+    if "fan_speed" in capabilities:
+        capabilities["fan_speed"].setdefault("dpt", "5.001")
+        capabilities["fan_speed"].setdefault("min", 0)
+        capabilities["fan_speed"].setdefault("max", 100)
+
+    set_cap("mode", {
+        "write_ga": "mode_ga"
+    })
+    if "mode" in capabilities:
+        capabilities["mode"].setdefault("dpt", "20.105")
+
+    set_cap("stop", {
+        "write_ga": "stop_ga"
+    })
+    if "stop" in capabilities:
+        capabilities["stop"].setdefault("dpt", "1.010")
+
+    set_cap("position", {
+        "write_ga": "position_set_ga",
+        "status_ga": "position_status_ga"
+    })
+    if "position" in capabilities:
+        capabilities["position"].setdefault("dpt", "5.001")
+        capabilities["position"].setdefault("min", 0)
+        capabilities["position"].setdefault("max", 100)
+
+    set_cap("sensor_value", {
+        "status_ga": "status_ga"
+    })
+
+    return {"capabilities": capabilities}
+
+
+
 class DeviceAddCommand(BaseModel):
     confirmed: bool = False
     device_id: str
@@ -358,6 +509,19 @@ class DeviceAddCommand(BaseModel):
     safety_level: str = "safe_demo"
     require_confirm: bool = False
     enabled: bool = True
+    knx_config_payload: Optional[Any] = None
+    color_rgb_ga: Optional[str] = None
+    color_temp_ga: Optional[str] = None
+    color_temp_status_ga: Optional[str] = None
+    color_temp_min: Optional[int] = None
+    color_temp_max: Optional[int] = None
+    temperature_set_ga: Optional[str] = None
+    temperature_status_ga: Optional[str] = None
+    fan_speed_ga: Optional[str] = None
+    mode_ga: Optional[str] = None
+    stop_ga: Optional[str] = None
+    position_set_ga: Optional[str] = None
+    position_status_ga: Optional[str] = None
 
 
 class DeviceUpdateCommand(BaseModel):
@@ -378,11 +542,25 @@ class DeviceUpdateCommand(BaseModel):
     safety_level: Optional[str] = None
     require_confirm: Optional[bool] = None
     enabled: Optional[bool] = None
+    knx_config_payload: Optional[Any] = None
+    color_rgb_ga: Optional[str] = None
+    color_temp_ga: Optional[str] = None
+    color_temp_status_ga: Optional[str] = None
+    color_temp_min: Optional[int] = None
+    color_temp_max: Optional[int] = None
+    temperature_set_ga: Optional[str] = None
+    temperature_status_ga: Optional[str] = None
+    fan_speed_ga: Optional[str] = None
+    mode_ga: Optional[str] = None
+    stop_ga: Optional[str] = None
+    position_set_ga: Optional[str] = None
+    position_status_ga: Optional[str] = None
 
 
 class DeviceDisableCommand(BaseModel):
     confirmed: bool = False
     device_id: str
+
 
 
 class ScheduleCommand(BaseModel):
@@ -455,7 +633,7 @@ async def process_telegrams():
     Step 2: Telegram Parser Worker.
     Reads raw telegrams, resolves device via DeviceRegistry (O(1)),
     updates StateManager, then publishes domain events via EventBus.
-    
+
     DOES NOT write to DB — that's the DB Writer subscriber's job.
     DOES NOT push to SSE directly — that's the SSE subscriber's job.
     """
@@ -585,9 +763,9 @@ async def start_knx():
         local_ip=KNX_LOCAL_IP_ENV
     )
     _knx_driver.register_callback(telegram_received_cb)
-    
+
     await _knx_driver.start()
-    
+
     # Backward compatibility dummy
     xknx_instance = _knx_driver if _knx_driver.is_connected else None
 
@@ -608,7 +786,7 @@ async def _do_fetch_weather():
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
             with urllib.request.urlopen(req, timeout=10) as response:
                 return json.loads(response.read().decode())
-        
+
         data = await asyncio.to_thread(_get)
         current = data.get("current_weather", {})
         weather_code = current.get("weathercode", 0)
@@ -619,7 +797,7 @@ async def _do_fetch_weather():
         # WMO Codes:
         # <=3: Clear, Partly cloudy -> Sunlight ON
         # >=50: Rain, Drizzle, Thunderstorm -> Rain ON
-        
+
         if weather_code >= 50:
             if "den_e" in DEVICES and DEVICES["den_e"].get("onoff_ga"):
                 await execute_action({"device": "den_e", "action": "on", "who": "automation:weather"})
@@ -638,7 +816,7 @@ async def _do_fetch_weather():
             if "den_f" in DEVICES and DEVICES["den_f"].get("onoff_ga"):
                 await execute_action({"device": "den_f", "action": "off", "who": "automation:weather"})
             print("[WEATHER] Action: Mây/Mù -> Tắt các đèn mô phỏng thời tiết")
-            
+
         return {"temp": temp, "code": weather_code}
     except Exception as e:
         print(f"[WEATHER] Fetch error: {e}")
@@ -694,7 +872,7 @@ def _init_domain_layer():
 
     _notification_engine = NotificationEngine(event_bus=event_bus)
     _notification_engine.register()
-    
+
     # Wire up AutomationEngine v2 (replaces v1)
     _automation_engine = AutomationEngineV2(
         db_path=_SMARTHOME_DB,
@@ -876,7 +1054,7 @@ async def execute_action(action_data: dict):
             status_code=400,
             detail=result.rejection_reason or result.error or "Command failed"
         )
-    
+
     device = get_device(action.device)
     return {
         "device": action.device,
@@ -893,10 +1071,10 @@ async def scheduled_action_runner(task_id: str, command: ScheduleCommand, run_at
     delay = (run_at - datetime.now()).total_seconds()
     if delay > 0:
         await asyncio.sleep(delay)
-    
+
     if task_id not in SCHEDULED_TASKS:
         return
-        
+
     task_data = SCHEDULED_TASKS.pop(task_id, None)
     if task_data:
         try:
@@ -1490,19 +1668,19 @@ async def get_automation_rules_v2():
 def validate_automation_rule_v2(cmd: AutomationRuleV2Command):
     if not cmd.name or not cmd.name.strip():
         raise HTTPException(status_code=400, detail="Rule name cannot be empty")
-    
+
     if not cmd.trigger or "type" not in cmd.trigger:
         raise HTTPException(status_code=400, detail="Trigger is required")
-        
+
     if not cmd.actions or len(cmd.actions) == 0:
         raise HTTPException(status_code=400, detail="At least one action is required")
-        
+
     # Validate Trigger
     if cmd.trigger.get("type") == "device_state":
         dev_id = cmd.trigger.get("device_id")
         if dev_id and dev_id not in DEVICES:
             raise HTTPException(status_code=400, detail=f"Trigger device '{dev_id}' not found")
-            
+
     # Validate Actions & Infinite Loop
     trigger_dev_id = cmd.trigger.get("device_id") if cmd.trigger.get("type") == "device_state" else None
     for act in cmd.actions:
@@ -1520,7 +1698,7 @@ async def create_automation_rule_v2(cmd: AutomationRuleV2Command, request: Reque
     """Create or update a rule (v2 schema)."""
     check_auth(request.headers.get("Authorization") or request.headers.get("x-knx-token"))
     validate_automation_rule_v2(cmd)
-    
+
     rule_id = cmd.rule_id or str(uuid.uuid4())[:8]
     conn = sqlite3.connect(str(_SMARTHOME_DB))
     conn.execute("""
@@ -1539,14 +1717,14 @@ async def create_automation_rule_v2(cmd: AutomationRuleV2Command, request: Reque
     ))
     conn.commit()
     conn.close()
-    
+
     # Audit log
     audit_log(
         who="admin", command_id=rule_id, device_id="AUTOMATION", action="CREATE_OR_UPDATE_RULE",
         old_value="", new_value=cmd.name, priority=50, result="SUCCESS", reason="Automation rule created or updated",
         latency_ms=0
     )
-    
+
     if _automation_engine:
         _automation_engine.load_rules()
     return {"ok": True, "rule_id": rule_id}
@@ -1565,12 +1743,12 @@ async def delete_automation_rule_v2(rule_id: str, request: Request):
     conn.execute("DELETE FROM automation_rules_v2 WHERE rule_id=?", (rule_id,))
     conn.commit()
     conn.close()
-    
+
     audit_log(
         who="admin", command_id=rule_id, device_id="AUTOMATION", action="DELETE_RULE",
         old_value=rule_id, new_value="", priority=50, result="SUCCESS", reason="Rule deleted", latency_ms=0
     )
-    
+
     if _automation_engine:
         _automation_engine.load_rules()
     return {"ok": True, "deleted": rule_id}
@@ -1584,7 +1762,7 @@ async def toggle_automation_rule_v2(rule_id: str, request: Request):
     if not row:
         conn.close()
         raise HTTPException(status_code=404, detail="Rule not found")
-        
+
     new_status = not bool(row[0])
     conn.execute(
         "UPDATE automation_rules_v2 SET enabled=?, updated_at=? WHERE rule_id=?",
@@ -1592,12 +1770,12 @@ async def toggle_automation_rule_v2(rule_id: str, request: Request):
     )
     conn.commit()
     conn.close()
-    
+
     audit_log(
         who="admin", command_id=rule_id, device_id="AUTOMATION", action="TOGGLE_RULE",
         old_value=str(not new_status), new_value=str(new_status), priority=50, result="SUCCESS", reason="Rule toggled", latency_ms=0
     )
-    
+
     if _automation_engine:
         _automation_engine.load_rules()
     return {"ok": True}
@@ -1612,9 +1790,9 @@ async def test_automation_rule_v2(rule_id: str, request: Request, cmd: RuleTestC
     check_auth(request.headers.get("Authorization") or request.headers.get("x-knx-token"))
     if _automation_engine is None:
         raise HTTPException(status_code=503, detail="Automation engine not ready")
-        
+
     dry_run = cmd.dry_run if cmd else False
-    
+
     rule = next((r for r in _automation_engine._rules if r.rule_id == rule_id), None)
     if rule is None:
         # Try to load from DB
@@ -1631,12 +1809,12 @@ async def test_automation_rule_v2(rule_id: str, request: Request, cmd: RuleTestC
 
     original_cooldown = rule.cooldown_seconds
     rule.cooldown_seconds = 0  # Bypass cooldown for test
-    
+
     audit_log(
         who="admin", command_id=rule_id, device_id="AUTOMATION", action="TEST_RULE",
         old_value="dry_run" if dry_run else "execute", new_value="", priority=50, result="SUCCESS", reason="Testing rule", latency_ms=0
     )
-    
+
     try:
         if dry_run:
             from core.rule_evaluator import RuleEvaluator
@@ -1688,28 +1866,31 @@ async def add_device(
         raise HTTPException(status_code=400, detail="Adding device requires confirmed=true")
 
     validate_device_id(command.device_id)
-    validate_ga(command.onoff_ga, "onoff_ga")
-    validate_ga(command.status_ga, "status_ga")
-    validate_ga(command.brightness_ga, "brightness_ga")
-    validate_ga(command.brightness_status_ga, "brightness_status_ga")
-    validate_ga(command.color_ga, "color_ga")
-    validate_ga(command.color_status_ga, "color_status_ga")
 
     if command.device_id in DEVICES:
         raise HTTPException(status_code=409, detail=f"Device already exists: {command.device_id}")
 
-    if command.type != "light":
-        raise HTTPException(status_code=400, detail="Currently only light devices are supported")
-
-    if command.supports_brightness and not command.brightness_ga:
-        raise HTTPException(status_code=400, detail="brightness_ga is required when supports_brightness=true")
+    allowed_types = ["light", "dimmer", "color_light", "ac", "curtain", "appliance", "sensor"]
+    if command.type not in allowed_types:
+        raise HTTPException(status_code=400, detail=f"Device type {command.type} is not supported")
 
     data = model_to_dict(command)
+
+    # Validate all GAs dynamically
+    for key, val in data.items():
+        if key.endswith("_ga") and val:
+            validate_ga(val, key)
+
     data.pop("confirmed", None)
     device_id = data.pop("device_id")
 
+    # Normalize capabilities
+    norm_res = normalize_device_capabilities(data)
+    data["knx_config_payload"] = norm_res
+
     DEVICES[device_id] = data
     save_devices()
+    device_registry.reload()
 
     # Emit event
     from core.event_bus import DomainEvent, EventType
@@ -1747,21 +1928,25 @@ async def update_device(
     update_data.pop("confirmed", None)
     device_id = update_data.pop("device_id")
 
-    for ga_field in [
-        "onoff_ga",
-        "status_ga",
-        "brightness_ga",
-        "brightness_status_ga",
-        "color_ga",
-        "color_status_ga"
-    ]:
-        validate_ga(update_data.get(ga_field), ga_field)
+    # Validate GAs dynamically
+    for key, val in update_data.items():
+        if key.endswith("_ga") and val:
+            validate_ga(val, key)
 
+    # Merge updates into existing device data
+    existing_dev = DEVICES.get(device_id, {})
+    merged_data = {**existing_dev}
     for key, value in update_data.items():
         if value is not None:
-            DEVICES[device_id][key] = value
+            merged_data[key] = value
 
+    # Re-normalize capabilities
+    norm_res = normalize_device_capabilities(merged_data)
+    merged_data["knx_config_payload"] = norm_res
+
+    DEVICES[device_id] = merged_data
     save_devices()
+    device_registry.reload()
 
     # Emit event
     from core.event_bus import DomainEvent, EventType
@@ -1814,20 +1999,20 @@ async def import_devices(
     try:
         global DEVICES
         payload = await request.json()
-        
+
         mode = payload.get("mode", "skip") # 'skip', 'overwrite', 'rename'
         devices_to_import = payload.get("devices", [])
-        
+
         imported_count = 0
         skipped_count = 0
         failed_count = 0
-        
+
         start_time = time.time()
-        
+
         db_path = BASE_DIR / "smarthome.db"
         import sqlite3
         import json
-        
+
         # Determine existing device IDs
         if 'device_registry' in globals() and device_registry:
             existing_ids = set(device_registry.all_dict().keys())
@@ -1836,18 +2021,28 @@ async def import_devices(
 
         conn = sqlite3.connect(str(db_path))
         cursor = conn.cursor()
-        
+
+        # Verify knx_config_payload column exists in the database
+        cursor.execute("PRAGMA table_info(devices)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if "knx_config_payload" not in columns:
+            conn.close()
+            raise HTTPException(
+                status_code=500,
+                detail="Database is missing the 'knx_config_payload' column. Please run the database migration first."
+            )
+
         try:
             cursor.execute("BEGIN TRANSACTION")
-            
+
             for dev in devices_to_import:
                 original_device_id = dev.get("device_id")
-                if not original_device_id: 
+                if not original_device_id:
                     failed_count += 1
                     continue
-                
+
                 device_id = original_device_id
-                
+
                 if device_id in existing_ids:
                     if mode == "skip":
                         skipped_count += 1
@@ -1859,30 +2054,34 @@ async def import_devices(
                         device_id = f"{original_device_id}_{counter}"
                     elif mode == "overwrite":
                         pass # keep device_id, will overwrite in DB
-                
+
                 # Backend GA Validation (Triggers Rollback if invalid)
                 import re
-                for ga_field in ["onoff_ga", "status_ga", "brightness_ga", "brightness_status_ga", "color_ga", "color_status_ga"]:
-                    ga_val = dev.get(ga_field)
-                    if ga_val:
-                        if not re.match(r'^\d+/\d+/\d+$', str(ga_val)):
-                            raise ValueError(f"Invalid KNX GA format for {device_id}: {ga_val}")
-                        
+                for k, v in dev.items():
+                    if k.endswith("_ga") and v:
+                        if not re.match(r'^\d+/\d+/\d+$', str(v)):
+                            raise ValueError(f"Invalid KNX GA format for {device_id}: {v}")
+
                         # Duplicate GA check against registry
                         if 'device_registry' in globals() and device_registry:
-                            existing_dev = device_registry.find_by_ga(ga_val)
+                            existing_dev = device_registry.find_by_ga(v)
                             if existing_dev and existing_dev.device_id != device_id:
-                                raise ValueError(f"Duplicate GA {ga_val} found (already used by {existing_dev.device_id})")
-                
+                                raise ValueError(f"Duplicate GA {v} found (already used by {existing_dev.device_id})")
+
+                # Normalize capability payload
+                norm_res = normalize_device_capabilities(dev)
+                payload_json = json.dumps(norm_res, ensure_ascii=False)
+
                 # Insert into DB
                 cursor.execute('''
                     INSERT OR REPLACE INTO devices (
-                        device_id, name, room, type, 
-                        onoff_ga, status_ga, supports_brightness, 
-                        brightness_ga, brightness_status_ga, 
-                        color_ga, color_status_ga, 
-                        role, aliases, safety_level, require_confirm, enabled
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        device_id, name, room, type,
+                        onoff_ga, status_ga, supports_brightness,
+                        brightness_ga, brightness_status_ga,
+                        color_ga, color_status_ga,
+                        role, aliases, safety_level, require_confirm, enabled,
+                        knx_config_payload
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     device_id,
                     dev.get("name", "Unknown"),
@@ -1899,11 +2098,12 @@ async def import_devices(
                     json.dumps(dev.get("aliases", []), ensure_ascii=False),
                     dev.get("safety_level"),
                     dev.get("require_confirm", False),
-                    dev.get("enabled", True)
+                    dev.get("enabled", True),
+                    payload_json
                 ))
                 imported_count += 1
                 existing_ids.add(device_id)
-            
+
             # Write Audit Log
             duration_ms = int((time.time() - start_time) * 1000)
             cursor.execute('''
@@ -1918,34 +2118,34 @@ async def import_devices(
                 f"Success: {imported_count}, Skipped: {skipped_count}, Failed: {failed_count}, Duration: {duration_ms}ms",
                 time.time()
             ))
-            
+
             conn.commit()
-            
+
         except Exception as e:
             conn.rollback()
             raise e
         finally:
             conn.close()
-        
+
         # Reload Registry
         if 'device_registry' in globals() and device_registry:
             device_registry.reload()
-            
+
             # Sync DEVICES dictionary for legacy code
             DEVICES.clear()
             DEVICES.update({d.device_id: d.to_dict() for d in device_registry.all()})
-            
+
             # Write devices.json backup
             with open(BASE_DIR / "devices.json", "w", encoding="utf-8") as f:
                 json.dump(DEVICES, f, indent=2, ensure_ascii=False)
-        
+
         # Publish Event
         from core.event_bus import DomainEvent, EventType
         if 'event_bus' in globals() and event_bus:
             # Add DEVICE_REGISTRY_UPDATED if missing
             if not hasattr(EventType, "DEVICE_REGISTRY_UPDATED"):
                 EventType.DEVICE_REGISTRY_UPDATED = "device.registry_updated"
-                
+
             event_bus.publish(DomainEvent(
                 event_type=EventType.DEVICE_REGISTRY_UPDATED,
                 source="BulkImport",
@@ -1955,10 +2155,10 @@ async def import_devices(
                     "failed": failed_count
                 }
             ))
-            
+
         return {
-            "ok": True, 
-            "imported": imported_count, 
+            "ok": True,
+            "imported": imported_count,
             "skipped": skipped_count,
             "failed": failed_count,
             "message": f"{imported_count} devices imported successfully"
@@ -1970,17 +2170,17 @@ async def import_devices(
 async def device_status(device_id: str, current_user: dict = Depends(auth_utils.get_current_user)):
     if device_id not in DEVICES:
         raise HTTPException(status_code=404, detail="Device not found")
-    
+
     # Check history for latest state
     conn = sqlite3.connect(str(BASE_DIR / 'smarthome.db'))
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT state, timestamp FROM device_history 
+        SELECT state, timestamp FROM device_history
         WHERE device_id = ? ORDER BY timestamp DESC LIMIT 1
     ''', (device_id,))
     row = cursor.fetchone()
     conn.close()
-    
+
     if row:
         return {"device_id": device_id, "state": row[0], "timestamp": row[1]}
     return {"device_id": device_id, "state": "UNKNOWN", "timestamp": 0}
@@ -1990,12 +2190,12 @@ async def device_history(device_id: str, current_user: dict = Depends(auth_utils
     conn = sqlite3.connect(str(BASE_DIR / 'smarthome.db'))
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT id, action, state, timestamp FROM device_history 
+        SELECT id, action, state, timestamp FROM device_history
         WHERE device_id = ? ORDER BY timestamp DESC LIMIT 50
     ''', (device_id,))
     rows = cursor.fetchall()
     conn.close()
-    
+
     history = [{"id": r[0], "action": r[1], "state": r[2], "timestamp": r[3]} for r in rows]
     return {"device_id": device_id, "history": history}
 
@@ -2005,6 +2205,14 @@ async def control_light(
     x_knx_token: Optional[str] = Header(default=None)
 , current_user: dict = Depends(auth_utils.get_current_user)):
     check_auth(x_knx_token)
+
+    # TEMPORARY E3.3 SAFETY GATE: Only allow verified physical lights
+    ALLOWED_PHYSICAL_LIGHTS = ["den_led_day", "den_tron", "den_d", "den_e", "den_f", "den_g", "den_h", "g1_den_tran"]
+    if command.device not in ALLOWED_PHYSICAL_LIGHTS:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Device {command.device} not in E3.3 allowed physical lights"
+        )
 
     action = ActionItem(
         device=command.device,
@@ -2428,21 +2636,21 @@ def _parse_status_query(text: str) -> Optional[dict[str, Any]]:
     - đèn trần đang bật hay tắt
     """
     t = _strip_accents(text)
-    
+
     status_keywords = ["trang thai", "dang bat hay tat", "kiem tra", "dang tat hay bat", "con bat khong"]
     has_status_intent = any(k in t for k in status_keywords)
-    
+
     if not has_status_intent:
         return None
-        
+
     all_keywords = ["tat ca", "trong nha", "cac den", "toan bo", "het"]
     if any(k in t for k in all_keywords):
         return {"type": "all"}
-        
+
     device_id = _find_device_from_text(text)
     if device_id:
         return {"type": "single", "device": device_id}
-        
+
     # Default to all if no specific device matched but asked for status generally
     return {"type": "all"}
 
@@ -2707,30 +2915,30 @@ async def agent_command(
                     "need_confirm": False,
                     "message": f"Thiết bị {device['name']} chưa được cấu hình địa chỉ đọc trạng thái (status_ga)."
                 }
-            
+
             val = await read_knx_status(device["status_ga"], value_type="switch")
             is_on = getattr(val, "value", None) == 1 or str(val) == "Switch.ON"
             state_str = "đang BẬT" if is_on else "đang TẮT" if val is not None else "không rõ trạng thái"
-            
+
             msg = f"Thiết bị {device['name']} {state_str}."
             if device.get("supports_brightness") and device.get("brightness_status_ga"):
                 bright_val = await read_knx_status(device["brightness_status_ga"], value_type="percent")
                 if bright_val is not None:
                     msg += f" Độ sáng hiện tại: {bright_val}%."
-            
+
             return {
                 "ok": True,
                 "executed": True,
                 "need_confirm": False,
                 "message": msg
             }
-        
+
         elif status_query["type"] == "all":
             valid_devices = []
             for dev_id, dev in DEVICES.items():
                 if dev.get("enabled", True) and dev.get("status_ga"):
                     valid_devices.append(dev)
-            
+
             if not valid_devices:
                 return {
                     "ok": True,
@@ -2738,7 +2946,7 @@ async def agent_command(
                     "need_confirm": False,
                     "message": "Không có thiết bị nào hỗ trợ đọc trạng thái (chưa được cấu hình status_ga)."
                 }
-                
+
             results = []
             for dev in valid_devices:
                 try:
@@ -2747,7 +2955,7 @@ async def agent_command(
                 except Exception as e:
                     results.append(e)
                 await asyncio.sleep(0.15)  # Tránh nghẽn mạng KNX (Bus Congestion)
-            
+
             lines = []
             for dev, val in zip(valid_devices, results):
                 if isinstance(val, Exception) or val is None:
@@ -2756,7 +2964,7 @@ async def agent_command(
                     is_on = getattr(val, "value", None) == 1 or str(val) == "Switch.ON"
                     state_str = "BẬT" if is_on else "TẮT"
                 lines.append(f"- {dev['name']}: {state_str}")
-            
+
             return {
                 "ok": True,
                 "executed": True,
@@ -2974,14 +3182,14 @@ async def agent_command(
                 "need_confirm": False,
                 "message": "Hiện chưa có dữ liệu lịch sử chat nào được ghi nhận."
             }
-        
+
         try:
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
             cursor.execute('SELECT sender_name, text FROM messages ORDER BY timestamp DESC LIMIT 20')
             rows = cursor.fetchall()
             conn.close()
-            
+
             if not rows:
                 return {
                     "ok": True,
@@ -2989,13 +3197,13 @@ async def agent_command(
                     "need_confirm": False,
                     "message": "Không có tin nhắn nào trong lịch sử gần đây."
                 }
-            
+
             lines = []
             for row in reversed(rows):
                 name = row[0] or "Unknown"
                 msg_text = row[1] or ""
                 lines.append(f"- {name}: {msg_text}")
-                
+
             summary = "Dưới đây là các tin nhắn gần nhất trong Group:\n" + "\n".join(lines)
             return {
                 "ok": True,
@@ -3087,34 +3295,54 @@ async def set_light_color_temperature(
     body: _ColorTemperatureRequest,
     _auth: bool = _CTDepends(_ct_require_token)
 , current_user: dict = Depends(auth_utils.get_current_user)):
-    devices = _ct_load_devices()
-
-    if body.device not in devices:
+    # Fetch from registry/DB
+    dev_obj = device_registry.get(body.device)
+    if dev_obj is None:
         raise _CTHTTPException(status_code=404, detail=f"Unknown device: {body.device}")
 
-    dev = devices[body.device]
+    dev = dev_obj.to_dict()
 
-    if not dev.get("supports_color_temperature"):
+    # Extract capabilities
+    caps = dev.get("capabilities", {}) or {}
+    color_temp_cap = caps.get("color_temperature", {})
+
+    # Backward compatibility fallback
+    supports_color_temp = False
+    color_temp_ga = None
+    min_k = 1000
+    max_k = 10000
+    dpt = "7.600"
+
+    if color_temp_cap:
+        supports_color_temp = True
+        color_temp_ga = color_temp_cap.get("write_ga")
+        min_k = int(color_temp_cap.get("min", 1000))
+        max_k = int(color_temp_cap.get("max", 10000))
+        dpt = color_temp_cap.get("dpt", "7.600")
+    elif dev.get("supports_color_temperature"):
+        supports_color_temp = True
+        color_temp_ga = dev.get("color_temp_ga")
+        min_k = int(dev.get("color_temp_min", 1000))
+        max_k = int(dev.get("color_temp_max", 10000))
+        dpt = dev.get("color_temp_dpt", "7.600")
+
+    if not supports_color_temp:
         raise _CTHTTPException(
             status_code=400,
             detail=f"Device {body.device} does not support color temperature"
         )
 
     kelvin = int(body.value)
-    min_k = int(dev.get("color_temp_min", 1000))
-    max_k = int(dev.get("color_temp_max", 10000))
-
     if kelvin < min_k or kelvin > max_k:
         raise _CTHTTPException(
             status_code=400,
             detail=f"Color temperature out of range: {kelvin}K. Allowed: {min_k}-{max_k}K"
         )
 
-    ga = dev.get("color_temp_ga")
-    if not ga:
+    if not color_temp_ga:
         raise _CTHTTPException(status_code=400, detail="Missing color_temp_ga")
 
-    await _ct_write_knx(ga, kelvin)
+    await _ct_write_knx(color_temp_ga, kelvin)
 
     return {
         "ok": True,
@@ -3123,8 +3351,8 @@ async def set_light_color_temperature(
         "action": "color_temperature",
         "value": kelvin,
         "unit": "K",
-        "group_address": ga,
-        "dpt": dev.get("color_temp_dpt", "7.600")
+        "group_address": color_temp_ga,
+        "dpt": dpt
     }
 
 # ===== END DALI COLOR TEMPERATURE EXTENSION =====
@@ -3136,12 +3364,12 @@ async def create_schedule(
     x_knx_token: Optional[str] = Header(default=None)
 , current_user: dict = Depends(auth_utils.get_current_user)):
     check_auth(x_knx_token)
-    
+
     validate_action(ActionItem(device=command.device, action=command.action, value=command.value))
-    
+
     task_id = secrets.token_hex(4).upper()
     run_at = datetime.now() + timedelta(seconds=command.delay_seconds)
-    
+
     SCHEDULED_TASKS[task_id] = {
         "task_id": task_id,
         "device": command.device,
@@ -3150,9 +3378,9 @@ async def create_schedule(
         "run_at": run_at.isoformat(),
         "reason": command.reason
     }
-    
+
     asyncio.create_task(scheduled_action_runner(task_id, command, run_at))
-    
+
     return {
         "ok": True,
         "action": "schedule_created",
@@ -3171,7 +3399,7 @@ async def list_schedules(x_knx_token: Optional[str] = Header(default=None), curr
 @app.delete("/schedule/{task_id}")
 async def cancel_schedule(task_id: str, x_knx_token: Optional[str] = Header(default=None), current_user: dict = Depends(auth_utils.get_current_user)):
     check_auth(x_knx_token)
-    
+
     task_id = task_id.upper()
     if task_id in SCHEDULED_TASKS:
         del SCHEDULED_TASKS[task_id]
@@ -3398,9 +3626,9 @@ async def get_chat_logs(limit: int = 100):
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT id, group_id, group_name, sender_id, sender_name, text, timestamp 
-            FROM messages 
-            ORDER BY timestamp DESC 
+            SELECT id, group_id, group_name, sender_id, sender_name, text, timestamp
+            FROM messages
+            ORDER BY timestamp DESC
             LIMIT ?
         ''', (limit,))
         rows = cursor.fetchall()
@@ -3422,12 +3650,12 @@ async def get_dashboard():
 @app.get("/api/ai/context")
 async def get_ai_context(session_id: str = "default", query: str = ""):
     """
-    Endpoint dành riêng cho OpenClaw để kéo (pull) ngữ cảnh ngôi nhà 
+    Endpoint dành riêng cho OpenClaw để kéo (pull) ngữ cảnh ngôi nhà
     (trạng thái thiết bị, lịch sử sự kiện) trước khi trả lời.
     """
     if not _context_builder:
         return {"error": "Context Builder not initialized"}
-    
+
     import json
     return json.loads(_context_builder.build_context(session_id=session_id, query=query))
 
@@ -3438,34 +3666,34 @@ async def ask_ai(request: AskAICommand):
             _context_builder.save_message(request.session_id, "user", request.text)
 
         cmd = [
-            "openclaw", "agent", 
-            "--session-key", request.session_id, 
-            "--message", request.text, 
+            "openclaw", "agent",
+            "--session-key", request.session_id,
+            "--message", request.text,
             "--json"
         ]
-        
+
         result = subprocess.run(cmd, capture_output=True, text=True, check=False)
-        
+
         if result.returncode != 0:
             reply_text = f"Lỗi AI: {result.stderr}"
             if _context_builder:
                 _context_builder.save_message(request.session_id, "system", reply_text)
             return {"reply": reply_text}
-            
+
         try:
             data = json.loads(result.stdout)
             reply = data.get("result", {}).get("meta", {}).get("finalAssistantVisibleText", "AI không trả lời được.")
-            
+
             # Layer 7: Reason from OpenClaw (if it outputs reason, we log it or parse it, here we assume reply is text)
             # The architecture requires reasoning, OpenClaw may output it as part of JSON.
             # Assuming OpenClaw's custom tool calls output reasoning. We just save the visible text.
             if _context_builder:
                 _context_builder.save_message(request.session_id, "assistant", reply)
-                
+
             return {"reply": reply}
         except json.JSONDecodeError:
             return {"reply": f"Lỗi định dạng AI: {result.stdout}"}
-            
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -3478,19 +3706,19 @@ async def get_tables(x_knx_token: Optional[str] = Header(default=None), current_
     db_path = BASE_DIR / "smarthome.db"
     if not db_path.exists():
         return {"tables": []}
-    
+
     try:
         conn = sqlite3.connect(str(db_path))
         cursor = conn.cursor()
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
         tables = [row[0] for row in cursor.fetchall()]
-        
+
         result = []
         for table in tables:
             cursor.execute(f"SELECT count(*) FROM {table}")
             count = cursor.fetchone()[0]
             result.append({"name": table, "rows": count})
-            
+
         conn.close()
         return {"tables": result}
     except Exception as e:
@@ -3502,11 +3730,11 @@ async def create_snapshot(current_user: dict = Depends(auth_utils.require_admin)
     db_path = BASE_DIR / "smarthome.db"
     backup_dir = BASE_DIR / "backups"
     backup_dir.mkdir(exist_ok=True)
-    
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     snapshot_filename = f"smarthome.db.bak_{timestamp}"
     snapshot_path = backup_dir / snapshot_filename
-    
+
     try:
         shutil.copy2(db_path, snapshot_path)
         return {"ok": True, "snapshot": snapshot_filename}
@@ -3517,14 +3745,14 @@ async def create_snapshot(current_user: dict = Depends(auth_utils.require_admin)
 async def execute_query(command: SqlQueryCommand, x_knx_token: Optional[str] = Header(default=None), current_user: dict = Depends(auth_utils.require_admin)):
     check_auth(x_knx_token)
     db_path = BASE_DIR / "smarthome.db"
-    
+
     try:
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        
+
         cursor.execute(command.query)
-        
+
         if command.query.strip().upper().startswith("SELECT") or command.query.strip().upper().startswith("PRAGMA"):
             rows = cursor.fetchall()
             columns = [description[0] for description in cursor.description] if cursor.description else []
@@ -3536,7 +3764,7 @@ async def execute_query(command: SqlQueryCommand, x_knx_token: Optional[str] = H
             affected = cursor.rowcount
             conn.close()
             return {"affected_rows": affected, "message": "Query executed successfully."}
-            
+
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -3548,7 +3776,7 @@ async def restart_service(command: RestartCommand, x_knx_token: Optional[str] = 
     check_auth(x_knx_token)
     if command.service not in ["knx-bridge", "knx-frontend", "ngrok", "openclaw"]:
         raise HTTPException(status_code=400, detail="Invalid service name")
-        
+
     try:
         # Since we are running under systemd user mode
         cmd = ["systemctl", "--user", "restart", command.service]
@@ -3576,7 +3804,7 @@ async def update_config(payload: dict, current_user: dict = Depends(auth_utils.r
     if env_path.exists():
         with open(env_path, "r") as f:
             lines = f.readlines()
-            
+
     updated = False
     for i, line in enumerate(lines):
         if line.strip() and not line.startswith("#") and "=" in line:
@@ -3586,20 +3814,20 @@ async def update_config(payload: dict, current_user: dict = Depends(auth_utils.r
                 lines[i] = f"{key}={payload[key]}\n"
                 updated = True
                 del payload[key]
-                
+
     # Add remaining new keys
     for key, val in payload.items():
         if key != "x_knx_token":
             lines.append(f"{key}={val}\n")
             updated = True
-            
+
     with open(env_path, "w") as f:
         f.writelines(lines)
-        
+
     # Reload environment variables into python process
     from dotenv import load_dotenv
     load_dotenv(override=True)
-    
+
     return {"ok": True, "message": "Configuration updated successfully"}
 
 from fastapi.responses import FileResponse
@@ -3610,10 +3838,10 @@ async def system_backup(x_knx_token: Optional[str] = Header(default=None), curre
     # check_auth(x_knx_token) # Disable auth for direct download for now
     backup_dir = BASE_DIR / "backups"
     backup_dir.mkdir(exist_ok=True)
-    
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     zip_filename = backup_dir / f"knx_backup_{timestamp}.zip"
-    
+
     try:
         with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
             if (BASE_DIR / "smarthome.db").exists():
@@ -3622,9 +3850,9 @@ async def system_backup(x_knx_token: Optional[str] = Header(default=None), curre
                 zipf.write(BASE_DIR / "devices.json", "devices.json")
             if (BASE_DIR / ".env").exists():
                 zipf.write(BASE_DIR / ".env", ".env")
-        
+
         return FileResponse(
-            path=zip_filename, 
+            path=zip_filename,
             filename=f"knx_backup_{timestamp}.zip",
             media_type="application/zip"
         )
@@ -3660,7 +3888,7 @@ async def system_restore(
         # Reload environment variables
         from dotenv import load_dotenv
         load_dotenv(override=True)
-        
+
         # Schedule a restart after a short delay
         subprocess.Popen(["bash", "-c", "sleep 2 && systemctl --user restart knx-bridge"])
 
@@ -3676,7 +3904,7 @@ async def system_logs(service: str = "knx-bridge", lines: int = 50, x_knx_token:
     check_auth(x_knx_token)
     if service not in ["knx-bridge", "knx-frontend", "ngrok", "openclaw"]:
         raise HTTPException(status_code=400, detail="Invalid service name")
-        
+
     try:
         cmd = ["journalctl", "--user", "-u", service, "-n", str(lines), "--no-pager"]
         result = subprocess.run(cmd, capture_output=True, text=True)
@@ -3707,10 +3935,10 @@ async def login(req: LoginRequest):
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     access_token_expires = timedelta(minutes=auth_utils.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = auth_utils.create_access_token(
-        payload={"sub": user["username"], "role": user["role"]}, expires_delta=access_token_expires
+        data={"sub": user["username"], "role": user["role"]}, expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer", "role": user["role"]}
 
@@ -3785,7 +4013,7 @@ async def get_scenes(current_user: dict = Depends(auth_utils.get_current_user)):
     conn = sqlite3.connect('smarthome.db')
     conn.row_factory = sqlite3.Row
     scenes_db = conn.execute("SELECT * FROM scenes").fetchall()
-    
+
     result = {}
     for s in scenes_db:
         scene_id = str(s['id'])
@@ -3819,20 +4047,20 @@ async def create_scene(payload: ScenePayload, current_user: dict = Depends(auth_
         cursor = conn.cursor()
         cursor.execute("INSERT INTO scenes (name, description) VALUES (?, ?)", (payload.name, payload.description))
         scene_id = cursor.lastrowid
-        
+
         actions_for_version = []
         for a in payload.actions:
             val_str = str(a.value) if a.value is not None else None
             cursor.execute("""
-                INSERT INTO scene_actions 
-                (scene_id, device_id, action, value, delay_seconds, condition_json, retry_count, timeout_seconds, comment, enabled) 
+                INSERT INTO scene_actions
+                (scene_id, device_id, action, value, delay_seconds, condition_json, retry_count, timeout_seconds, comment, enabled)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
-                scene_id, a.device, a.action, val_str, a.delay_seconds or 0.0, 
+                scene_id, a.device, a.action, val_str, a.delay_seconds or 0.0,
                 a.condition_json, a.retry_count or 0, a.timeout_seconds or 30.0, a.comment, int(a.enabled) if a.enabled is not None else 1
             ))
             actions_for_version.append(a.dict())
-            
+
         cursor.execute("INSERT INTO scene_versions (scene_id, actions_json, updated_at) VALUES (?, ?, ?)",
                        (scene_id, json.dumps(actions_for_version), time.time()))
         conn.commit()
@@ -3850,30 +4078,30 @@ async def update_scene(scene_id: int, payload: ScenePayload, current_user: dict 
         cursor = conn.cursor()
         cursor.execute("UPDATE scenes SET name=?, description=? WHERE id=?", (payload.name, payload.description, scene_id))
         cursor.execute("DELETE FROM scene_actions WHERE scene_id=?", (scene_id,))
-        
+
         actions_for_version = []
         for a in payload.actions:
             val_str = str(a.value) if a.value is not None else None
             cursor.execute("""
-                INSERT INTO scene_actions 
-                (scene_id, device_id, action, value, delay_seconds, condition_json, retry_count, timeout_seconds, comment, enabled) 
+                INSERT INTO scene_actions
+                (scene_id, device_id, action, value, delay_seconds, condition_json, retry_count, timeout_seconds, comment, enabled)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
-                scene_id, a.device, a.action, val_str, a.delay_seconds or 0.0, 
+                scene_id, a.device, a.action, val_str, a.delay_seconds or 0.0,
                 a.condition_json, a.retry_count or 0, a.timeout_seconds or 30.0, a.comment, int(a.enabled) if a.enabled is not None else 1
             ))
             actions_for_version.append(a.dict())
-            
+
         cursor.execute("INSERT INTO scene_versions (scene_id, actions_json, updated_at) VALUES (?, ?, ?)",
                        (scene_id, json.dumps(actions_for_version), time.time()))
-                       
+
         # Keep only last 10 versions
         cursor.execute("""
             DELETE FROM scene_versions WHERE scene_id=? AND id NOT IN (
                 SELECT id FROM scene_versions WHERE scene_id=? ORDER BY updated_at DESC LIMIT 10
             )
         """, (scene_id, scene_id))
-        
+
         conn.commit()
     except Exception as e:
         conn.close()
@@ -3890,7 +4118,7 @@ async def delete_scene(scene_id: int, current_user: dict = Depends(auth_utils.re
     conn.commit()
     conn.close()
     return {"status": "success"}
-    
+
 @app.get("/api/scenes/{scene_id}/versions")
 async def get_scene_versions(scene_id: int, current_user: dict = Depends(auth_utils.get_current_user)):
     import sqlite3, json
@@ -3898,7 +4126,7 @@ async def get_scene_versions(scene_id: int, current_user: dict = Depends(auth_ut
     conn.row_factory = sqlite3.Row
     versions_db = conn.execute("SELECT * FROM scene_versions WHERE scene_id=? ORDER BY updated_at DESC", (scene_id,)).fetchall()
     conn.close()
-    
+
     result = []
     for v in versions_db:
         result.append({
@@ -3939,3 +4167,29 @@ async def api_knx_read(req: KNXReadRequest, current_user: dict = Depends(auth_ut
         return {"status": "success", "value": result}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+from fastapi import UploadFile, File, Form
+import os
+
+@app.post("/api/devices/import_knxproj")
+async def import_knxproj(
+    file: UploadFile = File(...),
+    password: str = Form(None),
+    current_user: dict = Depends(auth_utils.require_admin)
+):
+    try:
+        temp_path = "/tmp/temp_knxproj.knxproj"
+        with open(temp_path, "wb") as f_out:
+            f_out.write(await file.read())
+
+        from core.knxproj_parser import ETSParser
+        parser = ETSParser()
+        result = parser.parse_project(temp_path, password)
+
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+
+        return result
+    except Exception as e:
+        return {"status": "error", "message": str(e)}

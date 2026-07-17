@@ -11,7 +11,7 @@ import sqlite3
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +36,8 @@ class Device:
     safety_level: Optional[str] = None  # "low" / "medium" / "high" / "critical"
     require_confirm: bool = False
     enabled: bool = True
+    knx_config_payload: Optional[str] = None
+    capabilities: dict = field(default_factory=dict)
 
     def all_gas(self) -> list[str]:
         """Trả về tất cả Group Addresses của thiết bị này."""
@@ -45,7 +47,25 @@ class Device:
             val = getattr(self, attr)
             if val:
                 gas.append(val)
-        return gas
+
+        # Index all GAs in capabilities payload
+        def extract_gas(d: Any):
+            if isinstance(d, dict):
+                for k, v in d.items():
+                    if isinstance(k, str) and (k.endswith("_ga") or k in ("write_ga", "status_ga")):
+                        if isinstance(v, str) and v:
+                            gas.append(v)
+                    elif isinstance(v, (dict, list)):
+                        extract_gas(v)
+            elif isinstance(d, list):
+                for item in d:
+                    extract_gas(item)
+
+        if self.capabilities:
+            extract_gas(self.capabilities)
+
+        # Deduplicate and filter out empties
+        return list(set(g for g in gas if g))
 
     def to_dict(self) -> dict:
         return {
@@ -65,6 +85,8 @@ class Device:
             "safety_level": self.safety_level,
             "require_confirm": self.require_confirm,
             "enabled": self.enabled,
+            "knx_config_payload": self.knx_config_payload,
+            "capabilities": self.capabilities,
         }
 
 
@@ -119,6 +141,25 @@ class DeviceRegistry:
             except Exception:
                 aliases = []
 
+            # Parse knx_config_payload
+            knx_config_payload_raw = d.get("knx_config_payload") or "{}"
+            try:
+                payload = json.loads(knx_config_payload_raw) if isinstance(knx_config_payload_raw, str) else knx_config_payload_raw
+            except Exception:
+                payload = {}
+
+            if not isinstance(payload, dict):
+                payload = {}
+
+            # If payload has key "capabilities", use it
+            if "capabilities" in payload:
+                capabilities = payload["capabilities"]
+            else:
+                capabilities = payload
+
+            if not isinstance(capabilities, dict):
+                capabilities = {}
+
             device = Device(
                 device_id=d["device_id"],
                 name=d.get("name", "Unknown"),
@@ -136,6 +177,8 @@ class DeviceRegistry:
                 safety_level=d.get("safety_level"),
                 require_confirm=bool(d.get("require_confirm", False)),
                 enabled=bool(d.get("enabled", True)),
+                knx_config_payload=knx_config_payload_raw if isinstance(knx_config_payload_raw, str) else json.dumps(knx_config_payload_raw, ensure_ascii=False),
+                capabilities=capabilities
             )
 
             devices[device.device_id] = device
