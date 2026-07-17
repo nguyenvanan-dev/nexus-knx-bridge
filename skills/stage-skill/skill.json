@@ -1,0 +1,20 @@
+{
+  "schema_version": 2,
+  "name": "stage-skill",
+  "description": "Chuyển skill từ Draft sang Staging để test.",
+  "intents": [
+    "stage_skill"
+  ],
+  "run": "python3 /home/an/knx-bridge/skills/official/stage-skill/main.py",
+  "input": {
+    "type": "object",
+    "properties": {
+      "draft_id": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "draft_id"
+    ]
+  }
+}

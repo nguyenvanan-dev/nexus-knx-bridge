@@ -1,0 +1,29 @@
+{
+  "schema_version": 2,
+  "name": "draft-skill",
+  "description": "Công cụ DUY NHẤT để tạo skill mới (Phase 2). Lưu mã nguồn vào thư mục drafts và sinh metadata.yaml.",
+  "intents": [
+    "create_skill",
+    "draft_skill"
+  ],
+  "run": "python3 /home/an/knx-bridge/skills/official/draft-skill/main.py",
+  "input": {
+    "type": "object",
+    "properties": {
+      "skill_name": {
+        "type": "string"
+      },
+      "description": {
+        "type": "string"
+      },
+      "python_code": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "skill_name",
+      "description",
+      "python_code"
+    ]
+  }
+}

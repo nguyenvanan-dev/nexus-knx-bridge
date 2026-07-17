@@ -1,0 +1,20 @@
+{
+  "schema_version": 2,
+  "name": "commit-skill",
+  "description": "Công cụ DUY NHẤT để Deploy (Phase 3). Đọc metadata, backup bản cũ, chuyển từ Staging sang Official và restart.",
+  "intents": [
+    "commit_skill"
+  ],
+  "run": "python3 /home/an/knx-bridge/skills/official/commit-skill/main.py",
+  "input": {
+    "type": "object",
+    "properties": {
+      "draft_id": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "draft_id"
+    ]
+  }
+}
