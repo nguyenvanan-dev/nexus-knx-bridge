@@ -2,6 +2,7 @@ import json
 import traceback
 import re
 from datetime import datetime
+from pathlib import Path
 from core.proposal_schema import make_proposal_base
 
 try:

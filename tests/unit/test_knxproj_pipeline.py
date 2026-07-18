@@ -47,6 +47,62 @@ def test_proposal_schema():
     assert isinstance(prop["proposed_devices"], list)
 
 
+def test_parse_project_mocked(monkeypatch):
+    import core.knxproj_parser
+
+    class MockXKNXProj:
+        def __init__(self, file_path, password=None):
+            self.file_path = file_path
+            self.password = password
+
+        def parse(self):
+            return {
+                "name": "Mock Project",
+                "group_addresses": [
+                    {"address": "1/1/1", "name": "Switch Light", "dpt": "1.001"}
+                ],
+                "topology": {
+                    "areas": [
+                        {
+                            "name": "Area 1",
+                            "lines": [
+                                {
+                                    "name": "Line 1",
+                                    "devices": [
+                                        {
+                                            "address": "1.1.1",
+                                            "name": "Switch Actuator",
+                                            "manufacturer_name": "ABB",
+                                            "product_name": "Actuator",
+                                            "com_objects": [
+                                                {
+                                                    "name": "Ch A Switch",
+                                                    "group_addresses": ["1/1/1"]
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+
+    monkeypatch.setattr(core.knxproj_parser, "has_xknx", True)
+    monkeypatch.setattr(core.knxproj_parser, "XKNXProj", MockXKNXProj)
+
+    parser = core.knxproj_parser.ETSParser()
+    res = parser.parse_project("/tmp/knxproj-test/Etron_R_D.knxproj", "abcD1234%")
+
+    assert res.get("status") != "error"
+    assert res["source"]["file"] == "Etron_R_D.knxproj"
+    assert res["summary"]["total_devices"] == 1
+    assert len(res["proposed_devices"]) == 1
+    assert res["proposed_devices"][0]["name"] == "Switch Actuator CH A"
+
+
+
 def test_applier_helpers():
     dev = {
         "name": "Test Light",
