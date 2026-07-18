@@ -3,7 +3,7 @@
   "name": "scene-manager",
   "description": "Quản lý kịch bản (Scene) của nhà thông minh. Dùng skill này để lưu kịch bản mới, xem thông tin một kịch bản, xem danh sách tất cả kịch bản, hoặc xóa kịch bản. Skill này KHÔNG kích hoạt kịch bản, nó chỉ thao tác với dữ liệu. Để kích hoạt, bạn hãy dùng skill này để đọc nội dung kịch bản, sau đó dùng skill knx-bridge để ra lệnh cho các thiết bị.",
   "intents": ["scene-manager"],
-  "run": "python3 /home/an/knx-bridge/skills/official/scene-manager/main.py",
+  "run": "python3 /home/an/knx-bridge/skills/scene-manager/main.py",
   "input": {
     "type": "object",
     "properties": {

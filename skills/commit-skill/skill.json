@@ -5,7 +5,7 @@
   "intents": [
     "commit_skill"
   ],
-  "run": "python3 /home/an/knx-bridge/skills/official/commit-skill/main.py",
+  "run": "python3 /home/an/knx-bridge/skills/commit-skill/main.py",
   "input": {
     "type": "object",
     "properties": {

@@ -6,7 +6,7 @@
     "create_skill",
     "draft_skill"
   ],
-  "run": "python3 /home/an/knx-bridge/skills/official/draft-skill/main.py",
+  "run": "python3 /home/an/knx-bridge/skills/draft-skill/main.py",
   "input": {
     "type": "object",
     "properties": {

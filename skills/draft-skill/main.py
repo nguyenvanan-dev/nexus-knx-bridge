@@ -41,10 +41,7 @@ def main():
         
     # Tạo SKILL.md
     with open(f'{draft_path}/SKILL.md', 'w', encoding='utf-8') as f:
-        f.write(f'# {skill_name}
-
-{desc}
-')
+        f.write(f'# {skill_name}\n\n{desc}\n')
         
     # Tạo skill.json (Optional but good for OpenClaw native run)
     skill_json = {

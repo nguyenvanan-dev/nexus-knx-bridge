@@ -5,7 +5,7 @@
   "intents": [
     "stage_skill"
   ],
-  "run": "python3 /home/an/knx-bridge/skills/official/stage-skill/main.py",
+  "run": "python3 /home/an/knx-bridge/skills/stage-skill/main.py",
   "input": {
     "type": "object",
     "properties": {
