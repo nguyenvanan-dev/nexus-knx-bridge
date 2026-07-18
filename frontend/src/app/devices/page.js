@@ -428,6 +428,7 @@ export default function DevicesPage() {
   const [importReview, setImportReview] = useState(null);
   const [selectedPhysicalAddress, setSelectedPhysicalAddress] = useState(null);
   const [unmappedExpanded, setUnmappedExpanded] = useState(false);
+  const [importPhase, setImportPhase] = useState(null);
 
   useEffect(() => {
       if (importReview && importReview.devices && importReview.devices.length > 0) {
@@ -497,14 +498,14 @@ export default function DevicesPage() {
       }
 
       if (gaChips.length === 0) {
-          return <span className="text-xs text-[var(--text-secondary)] italic">No GA mapped</span>;
+          return <span className="text-[13px] text-[var(--text-secondary)] italic">No GA mapped</span>;
       }
 
       return (
-          <div className="flex flex-wrap gap-1.5 my-1">
+          <div className="flex flex-wrap gap-[6px] my-1">
               {gaChips.map((chip, idx) => (
-                  <span key={idx} className="bg-white/5 px-2 py-0.5 rounded text-[11px] font-mono text-[var(--text-secondary)] border border-white/5 flex items-center gap-1.5">
-                      <span className="text-white/60 font-semibold">{chip.label}</span>
+                  <span key={idx} className="bg-black/35 px-3 py-1.5 rounded border border-white/[0.06] text-[13px] font-mono flex items-center gap-2 transition-colors hover:border-white/10">
+                      <span className="text-white/45 font-semibold">{chip.label}</span>
                       <span className="text-cyan-400 font-bold">{chip.ga}</span>
                   </span>
               ))}
@@ -517,9 +518,19 @@ export default function DevicesPage() {
       if (!file) return;
 
       if (file.name.endsWith('.knxproj')) {
-          const password = prompt("Nhập mật khẩu file ETS .knxproj (để trống nếu không có):") || "";
+          const password = prompt("Nhập mật khẩu file ETS .knxproj (để trống nếu không có):");
+          if (password === null) return; // User cancelled
+
+          let phaseTimer;
           try {
               setIsSaving(true);
+              setImportPhase('uploading');
+
+              // Automatically transition to parsing phase after a brief upload simulation period
+              phaseTimer = setTimeout(() => {
+                  setImportPhase('parsing');
+              }, 1500);
+
               const formData = new FormData();
               formData.append("file", file);
               if (password) {
@@ -529,6 +540,10 @@ export default function DevicesPage() {
                   method: 'POST',
                   body: formData
               });
+
+              clearTimeout(phaseTimer);
+              setImportPhase('parsing'); // Final parsing stage
+
               const result = await res.json();
 
               if (!res.ok) {
@@ -589,7 +604,9 @@ export default function DevicesPage() {
           } catch (err) {
               showDialog("KNXProj Parse Error", err.message, "danger");
           } finally {
+              if (phaseTimer) clearTimeout(phaseTimer);
               setIsSaving(false);
+              setImportPhase(null);
               e.target.value = null; // reset input
           }
           return;
@@ -721,14 +738,14 @@ export default function DevicesPage() {
           <p className="text-sm text-[var(--text-secondary)]">Quản lý {Object.keys(devices).length} thiết bị KNX</p>
         </div>
         <div className="flex gap-4">
-          <input type="file" id="import-file" className="hidden" accept=".json,.csv,.knxproj" onChange={importDevices} />
-          <button className="btn-secondary" onClick={() => document.getElementById('import-file').click()}>
+          <input type="file" id="import-file" className="hidden" accept=".json,.csv,.knxproj" onChange={importDevices} disabled={importPhase !== null || isSaving} />
+          <button className="btn-secondary" onClick={() => document.getElementById('import-file').click()} disabled={importPhase !== null || isSaving}>
             📥 Import
           </button>
-          <button className="btn-secondary" onClick={exportDevices}>
+          <button className="btn-secondary" onClick={exportDevices} disabled={importPhase !== null || isSaving}>
             📤 Export
           </button>
-          <button className="btn-primary" onClick={openAddWizard}>
+          <button className="btn-primary" onClick={openAddWizard} disabled={importPhase !== null || isSaving}>
             + Add Device Wizard
           </button>
         </div>
@@ -870,239 +887,261 @@ export default function DevicesPage() {
 
       {/* KNXPROJ IMPORT REVIEW MODAL */}
       {importReview && importReview.isKnxProj && (
-          <div className="dialog-overlay">
-             <div className="dialog-content" style={{ width: '1280px', maxWidth: '94vw', maxHeight: '88vh', display: 'flex', flexDirection: 'column', padding: '22px' }}>
-
-                  {/* FIXED HEADER */}
-                  <div style={{ paddingBottom: '14px' }} className="border-b border-[var(--border)] flex justify-between items-baseline shrink-0">
-                      <h3 className="text-xl m-0 text-[var(--success)] font-bold flex items-baseline gap-2">
-                          <span>📥 Review ETS Import</span>
-                          <span className="text-xs font-normal text-[var(--text-secondary)]">({importReview.summary.total_devices} devices parsed)</span>
-                      </h3>
-                      <button onClick={() => setImportReview(null)} className="text-2xl text-[var(--text-secondary)] hover:text-white leading-none transition-colors">&times;</button>
+          <div className="dialog-overlay animate-fade-in" style={{ background: 'rgba(5, 5, 8, 0.85)', backdropFilter: 'blur(20px)', padding: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+              <div
+                  className="bg-[#0f0f12]/95 border border-white/[0.08] rounded-2xl shadow-[0_25px_60px_-15px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden"
+                  style={{
+                      width: '100%',
+                      maxWidth: '1480px',
+                      height: '86vh',
+                      margin: 'auto'
+                  }}
+              >
+                  {/* FIXED HEADER: 68px */}
+                  <div
+                      className="border-b border-white/[0.08] flex justify-between items-center px-6 shrink-0 bg-white/[0.01]"
+                      style={{ height: '68px' }}
+                  >
+                      <div className="flex items-center gap-3">
+                          <span className="text-2xl">📥</span>
+                          <h3 className="text-xl m-0 font-bold bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-500 bg-clip-text text-transparent" style={{ fontSize: '20px' }}>
+                              Review ETS Import
+                          </h3>
+                          <span className="text-[13px] font-mono font-bold bg-white/5 border border-white/10 px-3 py-1.5 rounded-full text-white/50">
+                              {importReview.summary.total_devices} devices parsed
+                          </span>
+                      </div>
+                      <button
+                          onClick={() => setImportReview(null)}
+                          className="w-10 h-10 rounded-full border border-white/5 hover:border-white/10 bg-white/5 hover:bg-white/10 text-white/70 hover:text-white flex items-center justify-center transition-all duration-200 text-xl"
+                      >
+                          &times;
+                      </button>
                   </div>
 
-                  {/* BODY CONTAINER */}
-                  <div className="flex-1 min-h-0 flex flex-col gap-4 py-4" style={{ overflow: 'hidden' }}>
-
-                      {/* SUMMARY CARDS (COMPACT ROW) */}
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 shrink-0">
-                          <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', padding: '10px 14px', borderRadius: '8px' }} className="flex justify-between items-center">
-                              <span className="text-[10px] text-[var(--text-secondary)] font-medium uppercase tracking-wider">Total</span>
-                              <strong className="text-lg font-bold text-white">{importReview.summary.total_devices}</strong>
+                  {/* SUMMARY/OPTIONS PANEL */}
+                  <div
+                      className="border-b border-white/[0.05] bg-white/[0.005] px-6 py-5 flex flex-col gap-4 shrink-0"
+                  >
+                      {/* Summary cards row (min-h-[76px]) */}
+                      <div className="grid grid-cols-4 gap-4" style={{ gap: '16px' }}>
+                          <div
+                              className="border rounded-xl"
+                              style={{
+                                  backgroundColor: 'rgba(24, 24, 28, 0.6)',
+                                  borderColor: 'rgba(255, 255, 255, 0.06)',
+                                  padding: '16px 20px',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  justifyContent: 'space-between',
+                                  minHeight: '84px',
+                                  boxSizing: 'border-box'
+                              }}
+                          >
+                              <span className="font-bold uppercase tracking-wider text-white/45" style={{ fontSize: '13px', lineHeight: '1.2' }}>Total Devices</span>
+                              <strong className="font-bold text-white font-mono" style={{ fontSize: '26px', lineHeight: '1', marginTop: '8px' }}>{importReview.summary.total_devices}</strong>
                           </div>
-                          <div style={{ background: 'rgba(16, 185, 129, 0.04)', border: '1px solid rgba(16, 185, 129, 0.12)', padding: '10px 14px', borderRadius: '8px' }} className="flex justify-between items-center">
-                              <span className="text-[10px] text-[var(--text-secondary)] font-medium uppercase tracking-wider">Ready</span>
-                              <strong className="text-lg font-bold text-[var(--success)]">{importReview.summary.ready}</strong>
+                          <div
+                              className="border rounded-xl"
+                              style={{
+                                  backgroundColor: 'rgba(16, 185, 129, 0.02)',
+                                  borderColor: 'rgba(16, 185, 129, 0.2)',
+                                  padding: '16px 20px',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  justifyContent: 'space-between',
+                                  minHeight: '84px',
+                                  boxSizing: 'border-box'
+                              }}
+                          >
+                              <span className="font-bold uppercase tracking-wider text-emerald-400/60" style={{ fontSize: '13px', lineHeight: '1.2' }}>Ready to Import</span>
+                              <strong className="font-bold font-mono" style={{ fontSize: '26px', lineHeight: '1', marginTop: '8px', color: 'var(--success)' }}>{importReview.summary.ready}</strong>
                           </div>
-                          <div style={{ background: 'rgba(245, 158, 11, 0.04)', border: '1px solid rgba(245, 158, 11, 0.12)', padding: '10px 14px', borderRadius: '8px' }} className="flex justify-between items-center">
-                              <span className="text-[10px] text-[var(--text-secondary)] font-medium uppercase tracking-wider">Review</span>
-                              <strong className="text-lg font-bold text-[var(--warning)]">{importReview.summary.needs_review}</strong>
+                          <div
+                              className="border rounded-xl"
+                              style={{
+                                  backgroundColor: 'rgba(245, 158, 11, 0.02)',
+                                  borderColor: 'rgba(245, 158, 11, 0.2)',
+                                  padding: '16px 20px',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  justifyContent: 'space-between',
+                                  minHeight: '84px',
+                                  boxSizing: 'border-box'
+                              }}
+                          >
+                              <span className="font-bold uppercase tracking-wider text-amber-400/60" style={{ fontSize: '13px', lineHeight: '1.2' }}>Needs Review</span>
+                              <strong className="font-bold font-mono" style={{ fontSize: '26px', lineHeight: '1', marginTop: '8px', color: 'var(--warning)' }}>{importReview.summary.needs_review}</strong>
                           </div>
-                          <div style={{ background: 'rgba(239, 68, 68, 0.04)', border: '1px solid rgba(239, 68, 68, 0.12)', padding: '10px 14px', borderRadius: '8px' }} className="flex justify-between items-center">
-                              <span className="text-[10px] text-[var(--text-secondary)] font-medium uppercase tracking-wider">Missing</span>
-                              <strong className="text-lg font-bold text-[var(--danger)]">{importReview.summary.missing_info}</strong>
+                          <div
+                              className="border rounded-xl"
+                              style={{
+                                  backgroundColor: 'rgba(239, 68, 68, 0.02)',
+                                  borderColor: 'rgba(239, 68, 68, 0.2)',
+                                  padding: '16px 20px',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  justifyContent: 'space-between',
+                                  minHeight: '84px',
+                                  boxSizing: 'border-box'
+                              }}
+                          >
+                              <span className="font-bold uppercase tracking-wider text-rose-400/60" style={{ fontSize: '13px', lineHeight: '1.2' }}>Missing Info</span>
+                              <strong className="font-bold font-mono" style={{ fontSize: '26px', lineHeight: '1', marginTop: '8px', color: 'var(--danger)' }}>{importReview.summary.missing_info}</strong>
                           </div>
                       </div>
 
-                      {/* CONFLICTS (SHRINKABLE) */}
+                      {/* Options Row */}
+                      <div className="flex gap-6 items-center justify-between text-[14px] text-white/60 bg-white/[0.01] border border-white/[0.03] rounded-lg px-5 py-3.5 shrink-0 min-h-[44px]">
+                          <div className="flex gap-6 items-center">
+                              <label className="flex items-center gap-2.5 cursor-pointer select-none hover:text-white transition-colors duration-150">
+                                  <input
+                                      type="checkbox"
+                                      checked={importReview.includeNeedsReview || false}
+                                      onChange={(e) => setImportReview({ ...importReview, includeNeedsReview: e.target.checked })}
+                                      className="w-4 h-4 rounded border-white/10 bg-white/5 text-cyan-500 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                                  />
+                                  <span className="font-semibold text-white/80">Include devices needing review</span>
+                              </label>
+
+                              <label className="flex items-center gap-2.5 cursor-pointer select-none hover:text-white transition-colors duration-150">
+                                  <input
+                                      type="checkbox"
+                                      checked={importReview.allowDuplicates || false}
+                                      onChange={(e) => setImportReview({ ...importReview, allowDuplicates: e.target.checked })}
+                                      className="w-4 h-4 rounded border-white/10 bg-white/5 text-cyan-500 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                                  />
+                                  <span className="text-[var(--warning)] font-semibold">Allow duplicate group addresses (force import)</span>
+                              </label>
+                          </div>
+                      </div>
+                  </div>
+
+                  {/* MAIN CONTENT AREA: flex-1, min-height 0 */}
+                  <div className="flex-1 min-h-0 flex flex-col gap-4 p-6 pt-4 overflow-hidden bg-black/[0.04]">
                       {importReview.conflicts.length > 0 && (
-                          <div className="shrink-0" style={{ background: 'rgba(231, 101, 107, 0.1)', border: '1px solid var(--danger)', padding: '10px 14px', borderRadius: 'var(--radius-sm)' }}>
-                              <strong className="text-[var(--danger)] text-sm">⚠️ Group Address Collisions:</strong>
-                              <ul className="mt-1 pl-4 text-xs text-[var(--danger)] list-disc">
-                                  {importReview.conflicts.slice(0, 3).map((c, i) => <li key={i}>{c}</li>)}
-                                  {importReview.conflicts.length > 3 && <li>... and {importReview.conflicts.length - 3} more</li>}
+                          <div className="shrink-0" style={{ background: 'rgba(244, 63, 94, 0.03)', border: '1px solid rgba(244, 63, 94, 0.12)', padding: '12px 18px', borderRadius: '8px' }}>
+                              <strong className="text-[var(--danger)] text-[14px] block mb-1.5 font-bold uppercase tracking-wider">⚠️ Group Address Collisions Detected</strong>
+                              <ul className="pl-4 text-[13px] text-[var(--danger)]/90 list-disc space-y-0.5">
+                                  {importReview.conflicts.slice(0, 2).map((c, i) => <li key={i} className="truncate">{c}</li>)}
+                                  {importReview.conflicts.length > 2 && <li>... and {importReview.conflicts.length - 2} more</li>}
                               </ul>
                           </div>
                       )}
 
-                      {/* OPTIONS ROW (COMPACT) */}
-                      <div className="flex flex-wrap gap-4 px-3 py-2 rounded-lg bg-white/[0.02] border border-white/5 items-center shrink-0">
-                          <label className="flex items-center gap-2 text-xs cursor-pointer select-none text-white/80 hover:text-white transition-colors">
-                              <input
-                                  type="checkbox"
-                                  checked={importReview.includeNeedsReview || false}
-                                  onChange={(e) => setImportReview({ ...importReview, includeNeedsReview: e.target.checked })}
-                                  className="w-3.5 h-3.5 rounded border-white/10 bg-white/5 text-blue-600 focus:ring-0 focus:ring-offset-0 cursor-pointer"
-                              />
-                              <span className="font-medium">Include devices needing review</span>
-                          </label>
+                      <div className="glass-panel overflow-hidden flex-1 flex flex-col" style={{ padding: '0', borderRadius: '16px', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+                          <div className="overflow-x-auto overflow-y-auto flex-1 custom-scrollbar" style={{ flex: 1 }}>
+                              <table className="w-full text-left" style={{ fontSize: '14px' }}>
+                                  <thead className="sticky top-0 z-10 shadow-sm" style={{ backgroundColor: '#13151a' }}>
+                                      <tr>
+                                          <th className="font-medium uppercase tracking-wider text-[var(--text-secondary)]" style={{ padding: '16px 20px', fontSize: '13px' }}>Physical Device</th>
+                                          <th className="font-medium uppercase tracking-wider text-[var(--text-secondary)]" style={{ padding: '16px 20px', fontSize: '13px' }}>Channel</th>
+                                          <th className="font-medium uppercase tracking-wider text-[var(--text-secondary)]" style={{ padding: '16px 20px', fontSize: '13px' }}>Logical Device</th>
+                                          <th className="font-medium uppercase tracking-wider text-[var(--text-secondary)]" style={{ padding: '16px 20px', fontSize: '13px' }}>Room</th>
+                                          <th className="font-medium uppercase tracking-wider text-[var(--text-secondary)]" style={{ padding: '16px 20px', fontSize: '13px' }}>Type</th>
+                                          <th className="font-medium uppercase tracking-wider text-[var(--text-secondary)]" style={{ padding: '16px 20px', fontSize: '13px' }}>Group Addresses</th>
+                                          <th className="font-medium uppercase tracking-wider text-[var(--text-secondary)]" style={{ padding: '16px 20px', fontSize: '13px' }}>State</th>
+                                      </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-[var(--border)]">
+                                      {(importReview.devices || []).map((d, idx) => {
+                                          const physAddr = d.source?.physical_address || 'unknown';
+                                          const manufacturer = d.source?.manufacturer || '';
+                                          const product = d.source?.product || '';
+                                          const catDetails = [manufacturer, product].filter(Boolean).join(' / ');
+                                          const shortChannel = getShortChannel(d.source.channel);
+                                          const stateLabel = d.status === 'ready' ? 'Ready' : (d.status === 'needs_review' ? 'Review' : (d.status === 'missing_info' ? 'Missing' : d.status));
+                                          const stateColor = d.status === 'ready' ? '#10b981' : (d.status === 'needs_review' ? '#f59e0b' : (d.status === 'missing_info' ? '#ef4444' : '#6b7280'));
 
-                          <label className="flex items-center gap-2 text-xs cursor-pointer select-none text-white/80 hover:text-white transition-colors">
-                              <input
-                                  type="checkbox"
-                                  checked={importReview.allowDuplicates || false}
-                                  onChange={(e) => setImportReview({ ...importReview, allowDuplicates: e.target.checked })}
-                                  className="w-3.5 h-3.5 rounded border-white/10 bg-white/5 text-blue-600 focus:ring-0 focus:ring-offset-0 cursor-pointer"
-                              />
-                              <span className="text-[var(--warning)] font-medium">Allow duplicate group addresses</span>
-                          </label>
-                      </div>
-
-                      {/* MAIN CONTENT AREA: 2-PANE OR STACKED */}
-                      {(() => {
-                          const groupedDevices = {};
-                          (importReview.devices || []).forEach(d => {
-                              const physAddr = d.source?.physical_address || 'unknown';
-                              if (!groupedDevices[physAddr]) {
-                                  groupedDevices[physAddr] = {
-                                      physical_address: physAddr,
-                                      ets_device_name: d.source?.ets_device_name || d.name,
-                                      manufacturer: d.source?.manufacturer || '',
-                                      product: d.source?.product || '',
-                                      channels: []
-                                  };
-                              }
-                              groupedDevices[physAddr].channels.push(d);
-                          });
-                          const groupedList = Object.values(groupedDevices);
-
-                          const activeAddress = selectedPhysicalAddress || (groupedList[0]?.physical_address);
-                          const activeGroup = groupedList.find(g => g.physical_address === activeAddress) || groupedList[0];
-
-                          return (
-                              <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-4 overflow-hidden">
-                                  {/* LEFT PANE: Physical Devices List */}
-                                  <div className="w-full md:w-[320px] shrink-0 flex flex-col bg-white/[0.01] border border-white/5 rounded-lg overflow-hidden">
-                                      <div className="p-3 border-b border-white/5 bg-white/[0.02] flex justify-between items-center shrink-0">
-                                          <span className="text-xs font-bold text-white uppercase tracking-wider">Physical Devices</span>
-                                          <span className="text-[10px] font-semibold bg-white/10 px-2 py-0.5 rounded text-[var(--text-secondary)]">{groupedList.length}</span>
-                                      </div>
-                                      <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-2">
-                                          {groupedList.length === 0 ? (
-                                              <div className="p-4 text-center text-xs text-[var(--text-secondary)]">No physical devices</div>
-                                          ) : (
-                                              groupedList.map((group, idx) => {
-                                                  const isActive = group.physical_address === activeAddress;
-                                                  const metaLabel = [group.manufacturer, group.product].filter(Boolean).join(' / ');
-                                                  return (
-                                                      <div
-                                                          key={idx}
-                                                          onClick={() => setSelectedPhysicalAddress(group.physical_address)}
-                                                          className={`p-3 rounded-lg border transition-all cursor-pointer select-none flex flex-col gap-1.5 ${
-                                                              isActive
-                                                              ? 'border-[var(--accent)] bg-white/[0.05] shadow-[0_0_8px_rgba(59,130,246,0.1)]'
-                                                              : 'border-white/5 bg-white/[0.01] hover:border-white/10 hover:bg-white/[0.02]'
-                                                          }`}
-                                                      >
-                                                          <div className="flex justify-between items-center">
-                                                              <span className={`font-mono text-xs font-bold px-1.5 py-0.5 rounded ${
-                                                                  isActive ? 'bg-[var(--accent-soft)] text-[var(--accent)]' : 'bg-white/5 text-[var(--text-secondary)]'
-                                                              }`}>
-                                                                  {group.physical_address}
+                                          return (
+                                              <tr key={idx} className="hover:bg-[var(--bg-hover)] transition-colors">
+                                                  {/* Physical Device Column */}
+                                                  <td style={{ padding: '16px 20px' }}>
+                                                      <div className="flex flex-col gap-1">
+                                                          <span className="text-cyan-400 font-mono font-bold text-[14px] bg-cyan-500/10 border border-cyan-500/20 px-3 py-1 rounded w-max">
+                                                              {physAddr}
+                                                          </span>
+                                                          {catDetails && (
+                                                              <span className="text-[12px] text-white/40 font-medium truncate max-w-[200px]" title={catDetails}>
+                                                                  {catDetails}
                                                               </span>
-                                                              <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded font-bold uppercase shrink-0">
-                                                                  {group.channels.length} {group.channels.length === 1 ? 'output' : 'outputs'}
-                                                              </span>
-                                                          </div>
-                                                          <div className="font-semibold text-xs text-white truncate">{group.ets_device_name || 'Unknown Device'}</div>
-                                                          {metaLabel && (
-                                                              <div className="text-[10px] text-[var(--text-secondary)] truncate font-medium">{metaLabel}</div>
                                                           )}
                                                       </div>
-                                                  );
-                                              })
-                                          )}
-                                      </div>
-                                  </div>
+                                                  </td>
 
-                                  {/* RIGHT PANE: Selected Device Detail */}
-                                  <div className="flex-1 flex flex-col bg-white/[0.01] border border-white/5 rounded-lg overflow-hidden min-w-0">
-                                      {activeGroup ? (
-                                          <>
-                                              {/* Right Pane Header */}
-                                              <div className="p-3 border-b border-white/5 bg-white/[0.02] flex flex-col md:flex-row justify-between items-start md:items-center gap-2 shrink-0">
-                                                  <div className="min-w-0">
-                                                      <div className="flex flex-wrap items-center gap-2">
-                                                          <span className="text-[var(--accent)] font-mono text-xs font-bold bg-[var(--accent-soft)] px-2 py-0.5 rounded border border-[rgba(59,130,246,0.15)] shrink-0">
-                                                              {activeGroup.physical_address}
-                                                          </span>
-                                                          <span className="font-bold text-sm text-white truncate">{activeGroup.ets_device_name || 'Unknown Device'}</span>
+                                                  {/* Channel Column */}
+                                                  <td style={{ padding: '16px 20px' }} className="font-mono text-[14px] text-white/60">
+                                                      {shortChannel}
+                                                  </td>
+
+                                                  {/* Logical Device Column */}
+                                                  <td style={{ padding: '16px 20px' }}>
+                                                      <div className="truncate max-w-[240px] font-semibold text-[14px] text-white/90" style={{ fontWeight: '600' }} title={d.name}>
+                                                          {d.name}
                                                       </div>
-                                                      <div className="text-[10px] text-[var(--text-secondary)] truncate font-medium mt-1">
-                                                          {[activeGroup.manufacturer, activeGroup.product].filter(Boolean).join(' / ') || 'No catalog details'}
+                                                  </td>
+
+                                                  {/* Room Column */}
+                                                  <td style={{ padding: '16px 20px' }} className="text-[14px] text-white/60">
+                                                      {d.room || 'N/A'}
+                                                  </td>
+
+                                                  {/* Type Column */}
+                                                  <td style={{ padding: '16px 20px' }}>
+                                                      <span className="text-cyan-400 font-bold uppercase text-[13px] bg-cyan-500/10 px-3 py-1.5 rounded border border-cyan-500/20">
+                                                          {d.type}
+                                                      </span>
+                                                  </td>
+
+                                                  {/* Group Addresses Column */}
+                                                  <td style={{ padding: '16px 20px', whiteSpace: 'normal' }}>
+                                                      <div className="max-w-[400px]">
+                                                          {renderGAs(d)}
                                                       </div>
-                                                  </div>
-                                                  <span className="text-[10px] bg-[rgba(16,185,129,0.08)] text-[var(--success)] border border-[rgba(16,185,129,0.15)] px-2 py-0.5 rounded font-bold uppercase tracking-wider shrink-0">
-                                                      {activeGroup.channels.length} channel{activeGroup.channels.length === 1 ? '' : 's'} defined
-                                                  </span>
-                                              </div>
+                                                  </td>
 
-                                              {/* Right Pane Channels List */}
-                                              <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2">
-                                                  {activeGroup.channels.map((d, cIdx) => {
-                                                      const shortChannel = getShortChannel(d.source.channel);
-                                                      return (
-                                                          <div key={cIdx} className="p-3 bg-black/20 hover:bg-black/30 border border-white/5 rounded-lg flex flex-col gap-1.5 transition-all">
-                                                              {/* Dòng 1: Top line */}
-                                                              <div className="flex justify-between items-start gap-3">
-                                                                  <div className="flex items-center gap-2 min-w-0">
-                                                                      <span className="text-[var(--accent)] font-mono font-bold text-xs bg-[var(--accent-soft)] px-2 py-0.5 rounded border border-[rgba(59,130,246,0.15)] shrink-0" title={d.source.channel || 'MAIN'}>
-                                                                          {shortChannel}
-                                                                      </span>
-                                                                      <span className="font-semibold text-sm text-white break-words line-clamp-2" title={d.name}>
-                                                                          {d.name}
-                                                                      </span>
-                                                                  </div>
-                                                                  <div className="flex items-center gap-2 shrink-0">
-                                                                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider" style={{
-                                                                          background: d.status === 'ready' ? 'rgba(16, 185, 129, 0.08)' : (d.status === 'needs_review' ? 'rgba(245, 158, 11, 0.08)' : 'rgba(239, 68, 68, 0.08)'),
-                                                                          color: d.status === 'ready' ? 'var(--success)' : (d.status === 'needs_review' ? 'var(--warning)' : 'var(--danger)'),
-                                                                          border: `1px solid ${d.status === 'ready' ? 'rgba(16, 185, 129, 0.15)' : (d.status === 'needs_review' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(239, 68, 68, 0.15)')}`
-                                                                      }}>
-                                                                          {d.status}
-                                                                      </span>
-                                                                      <span className="text-xs font-mono text-[var(--text-secondary)] font-medium">
-                                                                          {(d.confidence * 100).toFixed(0)}%
-                                                                      </span>
-                                                                  </div>
-                                                              </div>
+                                                  {/* State Column */}
+                                                  <td style={{ padding: '16px 20px' }}>
+                                                      <span
+                                                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[13px] font-bold cursor-default"
+                                                          title={`${d.status} · confidence ${(d.confidence * 100).toFixed(0)}%`}
+                                                          style={{
+                                                              background: `${stateColor}12`,
+                                                              color: stateColor,
+                                                              border: `1px solid ${stateColor}25`
+                                                          }}
+                                                      >
+                                                          <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: stateColor, display: 'inline-block', flexShrink: 0 }}></span>
+                                                          {stateLabel}
+                                                      </span>
+                                                  </td>
+                                              </tr>
+                                          );
+                                      })}
+                                  </tbody>
+                              </table>
+                          </div>
+                      </div>
 
-                                                              {/* Dòng 2: Meta line (Room + Type) */}
-                                                              <div className="text-[11px] text-[var(--text-secondary)] flex flex-wrap items-center gap-1.5 font-medium">
-                                                                  <span>Room: <span className="text-white/80">{d.room || 'N/A'}</span></span>
-                                                                  <span>•</span>
-                                                                  <span>Type: <span className="text-white/80 font-semibold uppercase">{d.type}</span></span>
-                                                              </div>
-
-                                                              {/* Dòng 3: GA line (Group Address chips) */}
-                                                              <div className="mt-0.5">
-                                                                  {renderGAs(d)}
-                                                              </div>
-                                                          </div>
-                                                      );
-                                                  })}
-                                              </div>
-                                          </>
-                                      ) : (
-                                          <div className="flex-1 flex items-center justify-center text-xs text-[var(--text-secondary)]">
-                                              No physical device selected.
-                                          </div>
-                                      )}
-                                  </div>
-                              </div>
-                          );
-                      })()}
-
-                      {/* UNMAPPED GROUP ADDRESSES (COLLAPSIBLE SECTION) */}
+                      {/* DEDICATED UNMAPPED GROUP ADDRESSES SECTION */}
                       {importReview.unmapped && importReview.unmapped.length > 0 && (
-                          <div className="shrink-0 bg-white/[0.01] border border-white/5 rounded-lg overflow-hidden">
-                              <div
-                                  onClick={() => setUnmappedExpanded(!unmappedExpanded)}
-                                  className="p-2 px-3 bg-white/[0.02] hover:bg-white/[0.04] border-b border-white/5 flex justify-between items-center cursor-pointer select-none transition-colors"
-                              >
-                                  <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-secondary)]">
+                          <div className="shrink-0 bg-white/[0.01] border border-white/[0.05] rounded-xl p-4 flex flex-col gap-3">
+                              <div className="flex justify-between items-center text-[14px]">
+                                  <span className="font-bold text-white/80">
                                       🔗 Unmapped Group Addresses ({importReview.unmapped.length})
                                   </span>
-                                  <span className="text-xs text-[var(--text-secondary)]">
-                                      {unmappedExpanded ? 'Hide ▲' : 'Show ▼'}
-                                  </span>
+                                  <button
+                                      onClick={() => setUnmappedExpanded(!unmappedExpanded)}
+                                      className="bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 text-cyan-400 hover:text-cyan-300 font-semibold px-4.5 py-2 rounded-md text-[13px] transition-all cursor-pointer"
+                                  >
+                                      {unmappedExpanded ? 'Hide GAs ▲' : 'Show GAs ▼'}
+                                  </button>
                               </div>
                               {unmappedExpanded && (
-                                  <div className="p-3 bg-black/15 max-h-[140px] overflow-y-auto custom-scrollbar">
-                                      <div className="text-[11px] font-mono text-white/50 flex flex-wrap gap-1.5">
+                                  <div className="bg-black/25 border border-white/[0.03] rounded-lg p-3 max-h-[140px] overflow-y-auto custom-scrollbar">
+                                      <div className="text-[13px] font-mono text-white/40 flex flex-wrap gap-[6px]">
                                           {importReview.unmapped.map((ga, idx) => (
-                                              <span key={idx} className="bg-white/5 px-2 py-0.5 rounded border border-white/5 font-medium">
+                                              <span key={idx} className="bg-white/5 px-3 py-1.5 rounded border border-white/5 hover:border-white/10 hover:text-white/60 transition-colors">
                                                   {ga}
                                               </span>
                                           ))}
@@ -1112,20 +1151,22 @@ export default function DevicesPage() {
                           </div>
                       )}
 
-                      {/* CONSOLE OUTPUT (IF ANY) */}
+                      {/* Right Pane Console Output */}
                       {importReview.consoleOutput && (
-                          <div className="shrink-0">
-                              <h4 className="text-xs font-semibold mb-1 text-[var(--text-secondary)] uppercase tracking-wider">Dry-run Output Console</h4>
-                              <pre className="p-3 rounded text-xs font-mono text-[var(--success)] bg-black/60 border border-white/5 overflow-x-auto max-h-[120px] overflow-y-auto custom-scrollbar">
+                          <div className="p-4 border border-white/[0.08] bg-black/20 shrink-0 rounded-xl">
+                              <h4 className="text-[13px] font-bold mb-2 text-white/45 uppercase tracking-wider">Dry-run Output Console</h4>
+                              <pre className="p-4 rounded-lg text-sm font-mono text-[var(--success)] bg-black/50 border border-white/[0.04] overflow-x-auto max-h-[120px] overflow-y-auto custom-scrollbar">
                                   {importReview.consoleOutput}
                               </pre>
                           </div>
                       )}
-
                   </div>
 
-                  {/* FIXED FOOTER */}
-                  <div className="flex justify-between gap-3 border-t border-[var(--border)] pt-3.5 shrink-0" style={{ paddingBottom: '8px' }}>
+                  {/* FIXED FOOTER: 72px */}
+                  <div
+                      className="border-t border-white/[0.08] bg-white/[0.01] px-6 flex justify-between items-center shrink-0"
+                      style={{ height: '72px' }}
+                  >
                       <button onClick={() => setImportReview(null)} className="btn-secondary">Cancel</button>
                       <div className="flex gap-3">
                          <button onClick={async () => {
@@ -1184,11 +1225,9 @@ ${output.stderr || ''}`
                          }} className="btn-primary">Apply (Confirm)</button>
                       </div>
                   </div>
-             </div>
+              </div>
           </div>
-      )}
-
-      {/* WIZARD MODAL */}
+      )}      {/* WIZARD MODAL */}
       {showWizard && (
         <div className="dialog-overlay">
           <div className="dialog-content" style={{ padding: '0', width: '500px', maxWidth: '90%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -1415,6 +1454,24 @@ ${output.stderr || ''}`
 
           </div>
         </div>
+      )}
+
+      {importPhase && (
+          <div className="dialog-overlay" style={{ zIndex: 9999, background: 'rgba(0, 0, 0, 0.85)', backdropFilter: 'blur(4px)' }}>
+              <div className="flex flex-col items-center justify-center gap-4 text-center p-6 bg-[#121214] border border-white/10 rounded-2xl max-w-sm shadow-2xl">
+                  <div className="w-10 h-10 border-4 border-cyan-500/20 border-t-cyan-400 rounded-full animate-spin"></div>
+                  <div>
+                      <h4 className="text-white font-bold text-sm mb-1">
+                          {importPhase === 'uploading' ? 'Uploading ETS project...' : 'Parsing ETS project...'}
+                      </h4>
+                      <p className="text-[var(--text-secondary)] text-[13px] px-2 leading-relaxed">
+                          {importPhase === 'uploading'
+                           ? 'Sending file to server. Please do not close this window.'
+                           : 'Extracting metadata, physical devices, and group addresses. This may take a few seconds.'}
+                      </p>
+                  </div>
+              </div>
+          </div>
       )}
     </div>
   );
