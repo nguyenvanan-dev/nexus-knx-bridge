@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 
 
 BASE_DIR = Path(__file__).resolve().parent
-DEVICES_FILE = BASE_DIR / "devices.json"
+# DEVICES_FILE removed: devices.json is no longer a runtime config source
 DB_FILE = BASE_DIR / "data" / "chat_history.db"
 
 # Create data dir if not exists
@@ -2135,9 +2135,6 @@ async def import_devices(
             DEVICES.clear()
             DEVICES.update({d.device_id: d.to_dict() for d in device_registry.all()})
 
-            # Write devices.json backup
-            with open(BASE_DIR / "devices.json", "w", encoding="utf-8") as f:
-                json.dump(DEVICES, f, indent=2, ensure_ascii=False)
 
         # Publish Event
         from core.event_bus import DomainEvent, EventType
@@ -2459,7 +2456,7 @@ def _is_cancel_text(text: str) -> bool:
 
 def _device_alias_map() -> dict[str, str]:
     """
-    Tạo map alias -> device_id từ devices.json.
+    Tạo map alias -> device_id từ DEVICES compatibility dict loaded from SQLite.
     Có cả alias tiếng Việt có dấu và không dấu.
     """
     result = {}
@@ -2765,7 +2762,7 @@ def _doc_knx_parse_extracted_text(text: str) -> list[dict[str, Any]]:
                 }
             ],
             "status": status,
-            "notes": "Tạo từ doc_knx parser. Chưa cập nhật devices.json."
+            "notes": "Tạo từ doc_knx parser. Chưa cập nhật SQLite device registry."
         })
 
     return devices
@@ -2852,7 +2849,7 @@ def _doc_knx_handle_latest() -> dict[str, Any]:
         )
 
     lines.append("")
-    lines.append("Chưa cập nhật devices.json. Muốn ghi vào cấu hình phải xác nhận riêng.")
+    lines.append("Chưa cập nhật SQLite device registry. Muốn ghi vào cấu hình phải xác nhận riêng.")
 
     return {
         "ok": True,
@@ -2897,7 +2894,7 @@ async def agent_command(
     normalized_text = _strip_accents(text)
 
     # 0. Lệnh đọc proposal tài liệu KNX.
-    # Lệnh này KHÔNG điều khiển thiết bị thật và KHÔNG cập nhật devices.json.
+    # Lệnh này KHÔNG điều khiển thiết bị thật và KHÔNG cập nhật SQLite device registry.
     # Dùng trên Zalo:
     # doc_knx đọc proposal mới nhất
     if normalized_text.startswith("doc_knx"):
@@ -3266,9 +3263,7 @@ async def _ct_require_token(x_knx_token: str = _CTHeader(default="")):
     return True
 
 
-def _ct_load_devices():
-    p = _CTPath(__file__).with_name("devices.json")
-    return _ct_json.loads(p.read_text(encoding="utf-8"))
+# _ct_load_devices removed: color temperature now reads from DeviceRegistry
 
 
 async def _ct_write_knx(group_address: str, value: int):
@@ -3436,7 +3431,7 @@ async def doc_upload_page():
   <button type="submit">Đọc file</button>
 </form>
 <p>Hỗ trợ: Excel, CSV, PDF, Word, TXT.</p>
-<p>Sau khi đọc xong hệ thống chỉ tạo proposal, chưa ghi devices.json.</p>
+<p>Sau khi đọc xong hệ thống chỉ tạo proposal, chưa ghi cấu hình thiết bị vào SQLite.</p>
 </body>
 </html>
 """)
@@ -3846,10 +3841,13 @@ async def system_backup(x_knx_token: Optional[str] = Header(default=None), curre
         with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
             if (BASE_DIR / "smarthome.db").exists():
                 zipf.write(BASE_DIR / "smarthome.db", "smarthome.db")
-            if (BASE_DIR / "devices.json").exists():
-                zipf.write(BASE_DIR / "devices.json", "devices.json")
-            if (BASE_DIR / ".env").exists():
-                zipf.write(BASE_DIR / ".env", ".env")
+
+            # Generate devices snapshot from registry at backup time
+            try:
+                snapshot = json.dumps(DEVICES, indent=2, ensure_ascii=False)
+                zipf.writestr("devices_snapshot.json", snapshot)
+            except Exception:
+                pass  # Skip snapshot if DEVICES not available
 
         return FileResponse(
             path=zip_filename,

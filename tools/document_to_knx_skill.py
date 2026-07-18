@@ -26,7 +26,7 @@ EXTRACTED = KNOWLEDGE / "extracted"
 SUMMARIES = KNOWLEDGE / "summaries"
 REVIEW = KNOWLEDGE / "review"
 
-DEVICE_JSON = Path.home() / "knx-bridge" / "devices.json"
+DB_PATH = Path.home() / "knx-bridge" / "smarthome.db"
 
 
 def now_stamp():
@@ -252,11 +252,19 @@ def detect_candidates(text: str):
 
 
 def load_existing_devices():
-    if not DEVICE_JSON.exists():
+    """Load existing devices from SQLite (read-only)."""
+    if not DB_PATH.exists():
         return None
 
     try:
-        return json.loads(DEVICE_JSON.read_text(encoding="utf-8"))
+        import sqlite3
+        conn = sqlite3.connect(str(DB_PATH))
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM devices")
+        rows = cursor.fetchall()
+        conn.close()
+        return {dict(r)["device_id"]: dict(r) for r in rows}
     except Exception:
         return None
 
@@ -296,9 +304,9 @@ def make_proposal(source_path: Path, extracted_path: Path, summary_path: Path, t
         "status": "needs_ai_review",
         "important_warning": [
             "Đây mới là proposal nháp.",
-            "Không được ghi thẳng vào devices.json.",
+            "Không được ghi thẳng vào SQLite device registry.",
             "Bot cần đọc extracted_text và tạo proposed_devices có cấu trúc chuẩn.",
-            "Người dùng phải xác nhận trước khi cập nhật devices.json."
+            "Người dùng phải xác nhận trước khi cập nhật cấu hình thiết bị."
         ],
         "detected": candidates,
         "existing_devices_loaded": existing is not None,
