@@ -99,7 +99,90 @@ def test_parse_project_mocked(monkeypatch):
     assert res["source"]["file"] == "Etron_R_D.knxproj"
     assert res["summary"]["total_devices"] == 1
     assert len(res["proposed_devices"]) == 1
-    assert res["proposed_devices"][0]["name"] == "Switch Actuator CH A"
+    assert "Switch Actuator" in res["proposed_devices"][0]["name"]
+
+
+def test_parse_project_control_status_resolution(monkeypatch):
+    import core.knxproj_parser
+
+    class MockXKNXProj:
+        def __init__(self, file_path, password=None):
+            self.file_path = file_path
+            self.password = password
+
+        def parse(self):
+            return {
+                "name": "Mock Resolution Project",
+                "group_addresses": {
+                    "0/0/13": {"name": "G_control", "dpt": {"main": 1, "sub": 1}},
+                    "0/0/14": {"name": "", "dpt": {"main": 1, "sub": 1}},  # name is empty
+                    "0/0/15": {"name": "", "dpt": {"main": 1, "sub": 1}},
+                },
+                "communication_objects": {
+                    "1.1.1/O-1": {
+                        "name": "G_status",
+                        "group_address_links": ["0/0/14"]
+                    },
+                    "1.1.1/O-2": {
+                        "name": "G_control",
+                        "group_address_links": ["0/0/13"]
+                    },
+                    "1.1.1/O-3": {
+                        "name": "H_control",
+                        "group_address_links": ["0/0/15"]
+                    }
+                },
+                "devices": {
+                    "1.1.1": {
+                        "name": "Satel Actuator",
+                        "manufacturer_name": "Satel",
+                        "hardware_name": "KNX-SA24",
+                        "individual_address": "1.1.1",
+                        "channels": {
+                            "CH-7": {
+                                "name": "Channel G",
+                                "communication_object_ids": ["1.1.1/O-1", "1.1.1/O-2"]
+                            },
+                            "CH-8": {
+                                "name": "Channel H",
+                                "communication_object_ids": ["1.1.1/O-3"]  # no status object
+                            }
+                        }
+                    }
+                },
+                "topology": {
+                    "area_1": {
+                        "name": "Area 1",
+                        "lines": [
+                            {
+                                "name": "Line 1",
+                                "devices": ["1.1.1"]
+                            }
+                        ]
+                    }
+                }
+            }
+
+    monkeypatch.setattr(core.knxproj_parser, "has_xknx", True)
+    monkeypatch.setattr(core.knxproj_parser, "XKNXProj", MockXKNXProj)
+
+    parser = core.knxproj_parser.ETSParser()
+    res = parser.parse_project("/tmp/knxproj-test/Etron_R_D.knxproj", "abcD1234%")
+
+    assert res.get("status") != "error"
+    proposed = res["proposed_devices"]
+    assert len(proposed) == 2
+
+    # Find Channel G device
+    dev_g = next(d for d in proposed if "Channel G" in d["name"])
+    assert dev_g["legacy_fields"]["onoff_ga"] == "0/0/13"
+    assert dev_g["legacy_fields"]["status_ga"] == "0/0/14"
+
+    # Find Channel H device
+    dev_h = next(d for d in proposed if "Channel H" in d["name"])
+    assert dev_h["legacy_fields"]["onoff_ga"] == "0/0/15"
+    assert dev_h["legacy_fields"]["status_ga"] == "0/0/15"
+
 
 
 

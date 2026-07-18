@@ -69,7 +69,9 @@ class ETSParser:
         if any(k in name_lower for k in ["sensor", "cảm biến", "motion", "presence", "lux", "temp sensor", "nhiệt độ"]):
             return "sensor"
 
-        if any(d.startswith("9.") or d.startswith("20.") for d in dpts) or any(k in name_lower for k in ["hvac", "thermostat", "điều hòa", "ac", "aircon", "fcu", "fan"]):
+        if any(d.startswith("9.") or d.startswith("20.") for d in dpts) or \
+           any(k in name_lower for k in ["hvac", "thermostat", "điều hòa", "aircon"]) or \
+           re.search(r"\b(ac|fcu|fan)\b", name_lower):
             return "hvac"
 
         if any(d.startswith("1.008") for d in dpts) or any(k in name_lower for k in ["blind", "shutter", "curtain", "rèm", "mành"]):
@@ -91,42 +93,48 @@ class ETSParser:
     def build_capabilities(self, dev_type, gas):
         caps = {}
 
-        def find_ga(dpt_prefix=None, name_kw=None):
-            for address, info in gas.items():
+        def find_ga(dpt_prefix=None, name_kw=None, exclude_kw=None):
+            for address in sorted(gas.keys()):
+                info = gas[address]
                 dpt = info.get("dpt", "")
                 name = info.get("name", "").lower()
+                obj_name = info.get("object_name", "").lower()
+                if exclude_kw:
+                    if any(k in name for k in exclude_kw) or any(k in obj_name for k in exclude_kw):
+                        continue
                 if dpt_prefix and dpt.startswith(dpt_prefix):
                     return address
-                if name_kw and any(k in name for k in name_kw):
-                    return address
+                if name_kw:
+                    if any(k in name for k in name_kw) or any(k in obj_name for k in name_kw):
+                        return address
             return None
 
         if dev_type in ["light", "switch"]:
-            onoff = find_ga("1.") or (list(gas.keys())[0] if gas else "")
+            onoff = find_ga(dpt_prefix="1.", exclude_kw=["status", "state", "feedback", "phản hồi"]) or find_ga(dpt_prefix="1.") or (list(gas.keys())[0] if gas else "")
             status = find_ga(name_kw=["status", "state", "feedback", "phản hồi"]) or onoff
             caps["onoff"] = {"write_ga": onoff, "status_ga": status, "dpt": "1.001"}
 
         elif dev_type == "dimmer":
-            onoff = find_ga("1.") or (list(gas.keys())[0] if gas else "")
+            onoff = find_ga(dpt_prefix="1.", exclude_kw=["status", "state", "feedback", "phản hồi"]) or find_ga(dpt_prefix="1.") or (list(gas.keys())[0] if gas else "")
             status = find_ga(name_kw=["status", "state", "feedback", "phản hồi"]) or onoff
             caps["onoff"] = {"write_ga": onoff, "status_ga": status, "dpt": "1.001"}
 
-            brightness = find_ga("5.")
+            brightness = find_ga(dpt_prefix="5.", exclude_kw=["status", "state", "feedback", "phản hồi"]) or find_ga(dpt_prefix="5.")
             bright_status = find_ga(name_kw=["bright status", "bright feedback", "phần trăm phản hồi", "brightness status"]) or brightness
             if brightness:
                 caps["brightness"] = {"write_ga": brightness, "status_ga": bright_status, "dpt": "5.001"}
 
         elif dev_type == "color_light":
-            onoff = find_ga("1.") or (list(gas.keys())[0] if gas else "")
+            onoff = find_ga(dpt_prefix="1.", exclude_kw=["status", "state", "feedback", "phản hồi"]) or find_ga(dpt_prefix="1.") or (list(gas.keys())[0] if gas else "")
             status = find_ga(name_kw=["status", "state", "feedback", "phản hồi"]) or onoff
             caps["onoff"] = {"write_ga": onoff, "status_ga": status, "dpt": "1.001"}
 
-            brightness = find_ga("5.")
+            brightness = find_ga(dpt_prefix="5.", exclude_kw=["status", "state", "feedback", "phản hồi"]) or find_ga(dpt_prefix="5.")
             bright_status = find_ga(name_kw=["bright status", "brightness status"]) or brightness
             if brightness:
                 caps["brightness"] = {"write_ga": brightness, "status_ga": bright_status, "dpt": "5.001"}
 
-            color_temp = find_ga("7.600") or find_ga("7.")
+            color_temp = find_ga(dpt_prefix="7.600", exclude_kw=["status", "state", "feedback", "phản hồi"]) or find_ga(dpt_prefix="7.", exclude_kw=["status", "state", "feedback", "phản hồi"]) or find_ga(dpt_prefix="7.600") or find_ga(dpt_prefix="7.")
             ct_status = find_ga(name_kw=["color temp status", "color temperature status", "kelvin status"]) or color_temp
             if color_temp:
                 caps["color_temperature"] = {
@@ -138,42 +146,42 @@ class ETSParser:
                 }
 
         elif dev_type == "rgbw":
-            onoff = find_ga("1.") or (list(gas.keys())[0] if gas else "")
+            onoff = find_ga(dpt_prefix="1.", exclude_kw=["status", "state", "feedback", "phản hồi"]) or find_ga(dpt_prefix="1.") or (list(gas.keys())[0] if gas else "")
             status = find_ga(name_kw=["status", "state", "feedback"]) or onoff
             caps["onoff"] = {"write_ga": onoff, "status_ga": status, "dpt": "1.001"}
 
-            rgb = find_ga("232.")
+            rgb = find_ga(dpt_prefix="232.", exclude_kw=["status", "state", "feedback", "phản hồi"]) or find_ga(dpt_prefix="232.")
             rgb_status = find_ga(name_kw=["rgb status", "color status", "màu status"]) or rgb
             if rgb:
                 caps["rgb"] = {"write_ga": rgb, "status_ga": rgb_status, "dpt": "232.600"}
 
         elif dev_type in ["curtain", "blind"]:
-            updown = find_ga("1.008") or find_ga("1.") or (list(gas.keys())[0] if gas else "")
-            stop = find_ga("1.017") or find_ga(name_kw=["stop", "dừng", "step"]) or updown
+            updown = find_ga(dpt_prefix="1.008", exclude_kw=["status", "state", "feedback", "phản hồi"]) or find_ga(dpt_prefix="1.", exclude_kw=["status", "state", "feedback", "phản hồi"]) or find_ga(dpt_prefix="1.008") or find_ga(dpt_prefix="1.") or (list(gas.keys())[0] if gas else "")
+            stop = find_ga(dpt_prefix="1.017") or find_ga(name_kw=["stop", "dừng", "step"]) or updown
             caps["curtain"] = {"write_ga": updown, "stop_ga": stop, "dpt": "1.008"}
 
-            position = find_ga("5.")
+            position = find_ga(dpt_prefix="5.", exclude_kw=["status", "state", "feedback", "phản hồi"]) or find_ga(dpt_prefix="5.")
             pos_status = find_ga(name_kw=["position status", "pos status", "phần trăm phản hồi"]) or position
             if position:
                 caps["position"] = {"write_ga": position, "status_ga": pos_status, "dpt": "5.001"}
 
         elif dev_type == "hvac":
-            temp_status = find_ga("9.001") or find_ga("9.")
+            temp_status = find_ga(dpt_prefix="9.001") or find_ga(dpt_prefix="9.")
             if temp_status:
                 caps["temperature"] = {"status_ga": temp_status, "dpt": "9.001"}
 
-            setpoint = find_ga(name_kw=["setpoint", "đặt", "target"]) or find_ga("9.001") or find_ga("9.")
+            setpoint = find_ga(name_kw=["setpoint", "đặt", "target"], exclude_kw=["status", "state", "feedback", "phản hồi"]) or find_ga(dpt_prefix="9.001") or find_ga(dpt_prefix="9.")
             setpoint_status = find_ga(name_kw=["setpoint status", "setpoint feedback"]) or setpoint
             if setpoint:
                 caps["thermostat"] = {"write_ga": setpoint, "status_ga": setpoint_status, "dpt": "9.001"}
 
-            mode = find_ga("20.102") or find_ga("20.")
+            mode = find_ga(dpt_prefix="20.102") or find_ga(dpt_prefix="20.")
             mode_status = find_ga(name_kw=["mode status", "chế độ status"]) or mode
             if mode:
                 caps["mode"] = {"write_ga": mode, "status_ga": mode_status, "dpt": "20.102"}
 
         elif dev_type == "sensor":
-            val_ga = find_ga("9.") or find_ga("14.") or find_ga("13.") or (list(gas.keys())[0] if gas else "")
+            val_ga = find_ga(dpt_prefix="9.") or find_ga(dpt_prefix="14.") or find_ga(dpt_prefix="13.") or (list(gas.keys())[0] if gas else "")
             dpt = gas.get(val_ga, {}).get("dpt", "9.001") if val_ga else "9.001"
             caps["sensor"] = {"status_ga": val_ga, "dpt": dpt}
 
@@ -214,137 +222,237 @@ class ETSParser:
             project_data = proj.parse()
 
             ga_map = {}
-            ga_list = project_data.get("group_addresses", [])
+            ga_list = project_data.get("group_addresses", {})
 
-            if isinstance(ga_list, list):
+            if isinstance(ga_list, dict):
+                for addr, ga_item in ga_list.items():
+                    dpt_info = ga_item.get("dpt", {})
+                    dpt_str = ""
+                    if isinstance(dpt_info, dict):
+                        main = dpt_info.get("main")
+                        sub = dpt_info.get("sub")
+                        if main is not None and sub is not None:
+                            dpt_str = f"{main}.{str(sub).zfill(3)}"
+                    else:
+                        dpt_str = self.normalize_dpt(dpt_info)
+
+                    ga_map[self.normalize_ga(addr)] = {
+                        "dpt": dpt_str,
+                        "name": ga_item.get("name", "")
+                    }
+            elif isinstance(ga_list, list):
                 for ga_item in ga_list:
                     addr = ga_item.get("address", "")
                     dpt = ga_item.get("dpt", None)
                     name = ga_item.get("name", "")
                     if addr:
-                        norm_addr = self.normalize_ga(addr)
-                        ga_map[norm_addr] = {
+                        ga_map[self.normalize_ga(addr)] = {
                             "dpt": self.normalize_dpt(dpt),
                             "name": name
                         }
-            elif isinstance(ga_list, dict):
-                def extract_flat(node):
-                    if isinstance(node, dict):
-                        addr = node.get("address")
-                        dpt = node.get("dpt")
-                        name = node.get("name", "")
-                        if addr:
-                            norm_addr = self.normalize_ga(addr)
-                            ga_map[norm_addr] = {
-                                "dpt": self.normalize_dpt(dpt),
-                                "name": name
-                            }
-                        for v in node.values():
-                            extract_flat(v)
-                    elif isinstance(node, list):
-                        for item in node:
-                            extract_flat(item)
-                extract_flat(ga_list)
+
+            devices_map = {}
+            raw_devices = project_data.get("devices", {})
+            if isinstance(raw_devices, dict):
+                for addr, dev_dict in raw_devices.items():
+                    if isinstance(dev_dict, dict):
+                        devices_map[str(addr)] = dev_dict
+
+            device_to_topology_path = {}
+            topology = project_data.get("topology", {})
+
+            if isinstance(topology, dict) and "areas" in topology and isinstance(topology["areas"], list):
+                for area in topology["areas"]:
+                    area_name = area.get("name") or "Area"
+                    lines = area.get("lines", [])
+                    for line in lines:
+                        line_name = line.get("name") or "Line"
+                        devices_list = line.get("devices", [])
+                        for dev in devices_list:
+                            if isinstance(dev, dict):
+                                addr = dev.get("address") or dev.get("individual_address")
+                                if addr:
+                                    addr = str(addr)
+                                    device_to_topology_path[addr] = (area_name, line_name)
+                                    if addr not in devices_map:
+                                        devices_map[addr] = dev
+                            else:
+                                addr = str(dev)
+                                device_to_topology_path[addr] = (area_name, line_name)
+
+            elif isinstance(topology, dict):
+                for area_id, area_dict in topology.items():
+                    if isinstance(area_dict, dict):
+                        area_name = area_dict.get("name") or f"Area {area_id}"
+                        lines = area_dict.get("lines", {})
+                        if isinstance(lines, dict):
+                            for line_id, line_dict in lines.items():
+                                line_name = line_dict.get("name") or f"Line {line_id}"
+                                devices_list = line_dict.get("devices", [])
+                                for dev in devices_list:
+                                    if isinstance(dev, dict):
+                                        addr = dev.get("address") or dev.get("individual_address")
+                                        if addr:
+                                            addr = str(addr)
+                                            device_to_topology_path[addr] = (area_name, line_name)
+                                            if addr not in devices_map:
+                                                devices_map[addr] = dev
+                                    else:
+                                        addr = str(dev)
+                                        device_to_topology_path[addr] = (area_name, line_name)
+                        elif isinstance(lines, list):
+                            for line in lines:
+                                line_name = line.get("name", "")
+                                devices_list = line.get("devices", [])
+                                for dev in devices_list:
+                                    if isinstance(dev, dict):
+                                        addr = dev.get("address") or dev.get("individual_address")
+                                        if addr:
+                                            addr = str(addr)
+                                            device_to_topology_path[addr] = (area_name, line_name)
+                                            if addr not in devices_map:
+                                                devices_map[addr] = dev
+                                    else:
+                                        addr = str(dev)
+                                        device_to_topology_path[addr] = (area_name, line_name)
 
             proposed_devices = []
             unmapped_ga_set = set(ga_map.keys())
 
-            topology = project_data.get("topology", {})
-            areas = topology.get("areas", [])
-            for area in areas:
-                area_name = area.get("name", "")
-                lines = area.get("lines", [])
-                for line in lines:
-                    line_name = line.get("name", "")
-                    devices = line.get("devices", [])
-                    for device in devices:
-                        phys_address = device.get("address", "")
-                        dev_name = device.get("name", "Unknown Device")
-                        manufacturer = device.get("manufacturer_name", "")
-                        product = device.get("product_name", "")
+            com_objs = project_data.get("communication_objects", {})
 
-                        com_objects = device.get("com_objects", [])
+            for phys_address, device in devices_map.items():
+                dev_name = device.get("name", "Unknown Device")
+                manufacturer = device.get("manufacturer_name", "")
+                product = device.get("hardware_name", "")
 
-                        channel_groups = {}
-                        for com in com_objects:
-                            com_name = com.get("name", "")
-                            gas = com.get("group_addresses", [])
+                area_name, line_name = device_to_topology_path.get(phys_address, ("Common", "Common"))
 
-                            chan_match = re.search(r"\b(ch(?:annel)?|output|in|out|ch\.)\s*([a-h0-9]+)\b", com_name, re.IGNORECASE)
-                            chan_key = chan_match.group(0).upper() if chan_match else "MAIN"
+                channels = device.get("channels", {})
+                if not channels and "com_objects" in device:
+                    channels = {
+                        "MAIN": {
+                            "name": "Main Channel",
+                            "com_objects": device.get("com_objects", [])
+                        }
+                    }
+                elif not channels and device.get("communication_object_ids"):
+                    channels = {
+                        "MAIN": {
+                            "name": "Main Channel",
+                            "communication_object_ids": device.get("communication_object_ids", [])
+                        }
+                    }
 
-                            if chan_key not in channel_groups:
-                                channel_groups[chan_key] = []
-                            channel_groups[chan_key].append((com_name, gas))
+                for chan_id, chan_dict in channels.items():
+                    chan_name = chan_dict.get("name") or chan_id
+                    com_obj_ids = chan_dict.get("communication_object_ids", [])
+                    inline_com_objects = chan_dict.get("com_objects", [])
 
-                        for chan, objects in channel_groups.items():
-                            device_gas = {}
-                            all_dpts = []
-                            for com_name, gas in objects:
-                                for ga in gas:
-                                    ga_addr = ga if isinstance(ga, str) else ga.get("address", "")
-                                    if ga_addr:
-                                        norm = self.normalize_ga(ga_addr)
-                                        info = ga_map.get(norm, {"dpt": "", "name": com_name})
-                                        device_gas[norm] = info
-                                        if info["dpt"]:
-                                            all_dpts.append(info["dpt"])
-                                        unmapped_ga_set.discard(norm)
+                    device_gas = {}
+                    all_dpts = []
+                    objects_list = []
 
-                            if not device_gas:
-                                continue
-
-                            chan_suffix = f" {chan}" if chan != "MAIN" else ""
-                            logical_name = f"{dev_name}{chan_suffix}"
-                            inferred_type = self.infer_device_type(all_dpts, logical_name)
-                            inferred_room = self.infer_room_from_name_path(logical_name, f"{area_name} {line_name}")
-
-                            caps = self.build_capabilities(inferred_type, device_gas)
-                            legacy = self.build_legacy_fields(caps)
-
-                            status = "ready"
-                            reasons = []
-                            warnings = []
-                            confidence = 1.0
-
-                            if inferred_type == "unknown":
-                                status = "needs_review"
-                                confidence = 0.5
-                                reasons.append("Unknown device type could not be inferred from DPTs.")
-
-                            if not any(legacy.values()):
-                                status = "missing_info"
-                                confidence = 0.3
-                                reasons.append("No common Group Addresses could be mapped to legacy control fields.")
-
-                            clean_name = re.sub(r"[^a-z0-9]+", "_", logical_name.lower().strip())
-                            device_id = f"knx_{clean_name}_{phys_address.replace('.', '_')}"
-
-                            proposed_devices.append({
-                                "device_id": device_id,
-                                "name": logical_name,
-                                "room": inferred_room,
-                                "type": inferred_type,
-                                "status": status,
-                                "confidence": confidence,
-                                "reasons": reasons,
-                                "source": {
-                                    "physical_address": phys_address,
-                                    "manufacturer": manufacturer,
-                                    "product": product,
-                                    "channel": chan,
-                                    "ets_device_name": dev_name
-                                },
-                                "legacy_fields": legacy,
-                                "knx_config_payload": {
-                                    "capabilities": caps,
-                                    "raw": {
-                                        "group_addresses": list(device_gas.keys()),
-                                        "communication_objects": [{"name": o[0], "gas": o[1]} for o in objects]
-                                    }
-                                },
-                                "warnings": warnings
+                    for oid in com_obj_ids:
+                        obj = com_objs.get(oid)
+                        if obj:
+                            com_name = obj.get("name") or obj.get("function_text") or "Object"
+                            gas = obj.get("group_address_links", [])
+                            objects_list.append({
+                                "name": com_name,
+                                "gas": gas
                             })
+                            for ga in gas:
+                                norm = self.normalize_ga(ga)
+                                info = dict(ga_map.get(norm, {"dpt": "", "name": ""}))
+                                if com_name:
+                                    info["object_name"] = com_name
+                                    if not info.get("name"):
+                                        info["name"] = com_name
+                                    else:
+                                        info["name"] = f"{info['name']} {com_name}"
+                                device_gas[norm] = info
+                                if info["dpt"]:
+                                    all_dpts.append(info["dpt"])
+                                unmapped_ga_set.discard(norm)
+
+                    for obj in inline_com_objects:
+                        com_name = obj.get("name") or "Object"
+                        gas = obj.get("group_addresses", [])
+                        objects_list.append({
+                            "name": com_name,
+                            "gas": gas
+                        })
+                        for ga in gas:
+                            norm = self.normalize_ga(ga)
+                            info = dict(ga_map.get(norm, {"dpt": "", "name": ""}))
+                            if com_name:
+                                info["object_name"] = com_name
+                                if not info.get("name"):
+                                    info["name"] = com_name
+                                else:
+                                    info["name"] = f"{info['name']} {com_name}"
+                            device_gas[norm] = info
+                            if info["dpt"]:
+                                all_dpts.append(info["dpt"])
+                            unmapped_ga_set.discard(norm)
+
+                    if not device_gas:
+                        continue
+
+                    if chan_name.lower() in dev_name.lower():
+                        logical_name = dev_name
+                    else:
+                        logical_name = f"{dev_name} {chan_name}"
+
+                    inferred_type = self.infer_device_type(all_dpts, logical_name)
+                    inferred_room = self.infer_room_from_name_path(logical_name, f"{area_name} {line_name}")
+
+                    caps = self.build_capabilities(inferred_type, device_gas)
+                    legacy = self.build_legacy_fields(caps)
+
+                    status = "ready"
+                    reasons = []
+                    confidence = 1.0
+
+                    if inferred_type == "unknown":
+                        status = "needs_review"
+                        confidence = 0.5
+                        reasons.append("Unknown device type could not be inferred from DPTs.")
+
+                    if not any(legacy.values()):
+                        status = "missing_info"
+                        confidence = 0.3
+                        reasons.append("No common Group Addresses could be mapped to legacy control fields.")
+
+                    clean_name = re.sub(r"[^a-z0-9]+", "_", logical_name.lower().strip())
+                    device_id = f"knx_{clean_name}_{phys_address.replace('.', '_')}"
+
+                    proposed_devices.append({
+                        "device_id": device_id,
+                        "name": logical_name,
+                        "room": inferred_room,
+                        "type": inferred_type,
+                        "status": status,
+                        "confidence": confidence,
+                        "reasons": reasons,
+                        "source": {
+                            "physical_address": phys_address,
+                            "manufacturer": manufacturer,
+                            "product": product,
+                            "channel": chan_id,
+                            "ets_device_name": dev_name
+                        },
+                        "legacy_fields": legacy,
+                        "knx_config_payload": {
+                            "capabilities": caps,
+                            "raw": {
+                                "group_addresses": list(device_gas.keys()),
+                                "communication_objects": objects_list
+                            }
+                        },
+                        "warnings": []
+                    })
 
             ga_seen = {}
             duplicates = []
