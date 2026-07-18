@@ -444,53 +444,63 @@ export default function DevicesPage() {
 
   const renderGAs = (d) => {
       const caps = d.knx_config_payload?.capabilities || {};
-      const gaLines = [];
+      const gaChips = [];
 
       if (caps.onoff) {
-          gaLines.push(`On/Off: ${caps.onoff.write_ga || '-'}/${caps.onoff.status_ga || '-'}`);
+          if (caps.onoff.write_ga) gaChips.push({ label: 'On/Off', ga: caps.onoff.write_ga });
+          if (caps.onoff.status_ga) gaChips.push({ label: 'Status', ga: caps.onoff.status_ga });
       }
       if (caps.brightness) {
-          gaLines.push(`Bright: ${caps.brightness.write_ga || '-'}/${caps.brightness.status_ga || '-'}`);
+          if (caps.brightness.write_ga) gaChips.push({ label: 'Brightness', ga: caps.brightness.write_ga });
+          if (caps.brightness.status_ga) gaChips.push({ label: 'Brightness Status', ga: caps.brightness.status_ga });
       }
       if (caps.rgb) {
-          gaLines.push(`RGB: ${caps.rgb.write_ga || '-'}/${caps.rgb.status_ga || '-'}`);
+          if (caps.rgb.write_ga) gaChips.push({ label: 'Color/RGB', ga: caps.rgb.write_ga });
+          if (caps.rgb.status_ga) gaChips.push({ label: 'Color Status', ga: caps.rgb.status_ga });
       }
       if (caps.color_temperature) {
-          gaLines.push(`ColorTemp: ${caps.color_temperature.write_ga || '-'}/${caps.color_temperature.status_ga || '-'}`);
+          if (caps.color_temperature.write_ga) gaChips.push({ label: 'Color Temp', ga: caps.color_temperature.write_ga });
+          if (caps.color_temperature.status_ga) gaChips.push({ label: 'Color Temp Status', ga: caps.color_temperature.status_ga });
       }
       if (caps.curtain) {
-          gaLines.push(`Curtain: ${caps.curtain.write_ga || '-'}/stop:${caps.curtain.stop_ga || '-'}`);
+          if (caps.curtain.write_ga) gaChips.push({ label: 'Curtain', ga: caps.curtain.write_ga });
+          if (caps.curtain.stop_ga) gaChips.push({ label: 'Stop', ga: caps.curtain.stop_ga });
       }
       if (caps.position) {
-          gaLines.push(`Pos: ${caps.position.write_ga || '-'}/${caps.position.status_ga || '-'}`);
+          if (caps.position.write_ga) gaChips.push({ label: 'Pos', ga: caps.position.write_ga });
+          if (caps.position.status_ga) gaChips.push({ label: 'Pos Status', ga: caps.position.status_ga });
       }
       if (caps.temperature) {
-          gaLines.push(`Temp: status:${caps.temperature.status_ga || '-'}`);
+          if (caps.temperature.status_ga) gaChips.push({ label: 'Temp', ga: caps.temperature.status_ga });
       }
       if (caps.thermostat) {
-          gaLines.push(`Thermostat: ${caps.thermostat.write_ga || '-'}/${caps.thermostat.status_ga || '-'}`);
+          if (caps.thermostat.write_ga) gaChips.push({ label: 'Thermostat', ga: caps.thermostat.write_ga });
+          if (caps.thermostat.status_ga) gaChips.push({ label: 'Thermostat Status', ga: caps.thermostat.status_ga });
       }
       if (caps.mode) {
-          gaLines.push(`Mode: ${caps.mode.write_ga || '-'}/${caps.mode.status_ga || '-'}`);
+          if (caps.mode.write_ga) gaChips.push({ label: 'Mode', ga: caps.mode.write_ga });
+          if (caps.mode.status_ga) gaChips.push({ label: 'Mode Status', ga: caps.mode.status_ga });
       }
       if (caps.sensor) {
-          gaLines.push(`Sensor: status:${caps.sensor.status_ga || '-'}`);
+          if (caps.sensor.status_ga) gaChips.push({ label: 'Sensor', ga: caps.sensor.status_ga });
       }
 
-      if (gaLines.length === 0) {
+      if (gaChips.length === 0) {
           const lf = d.legacy_fields || {};
-          if (lf.onoff_ga || lf.status_ga) {
-              gaLines.push(`Control: ${lf.onoff_ga || '-'}/${lf.status_ga || '-'}`);
-          } else {
-              gaLines.push('No GA mapped');
-          }
+          if (lf.onoff_ga) gaChips.push({ label: 'On/Off', ga: lf.onoff_ga });
+          if (lf.status_ga) gaChips.push({ label: 'Status', ga: lf.status_ga });
+      }
+
+      if (gaChips.length === 0) {
+          return <span className="text-xs text-[var(--text-secondary)] italic">No GA mapped</span>;
       }
 
       return (
-          <div className="text-[10px] font-mono text-[var(--text-secondary)] flex flex-wrap gap-x-2 gap-y-0.5 mt-1">
-              {gaLines.map((line, idx) => (
-                  <span key={idx} className="bg-[rgba(255,255,255,0.03)] px-1 py-0.5 rounded border border-[rgba(255,255,255,0.05)]">
-                      {line}
+          <div className="flex flex-wrap gap-2 mt-2">
+              {gaChips.map((chip, idx) => (
+                  <span key={idx} className="bg-white/5 px-2.5 py-1.5 rounded-lg text-xs font-mono text-[var(--text-secondary)] border border-white/5 flex items-center gap-2">
+                      <span className="text-white/60 font-semibold">{chip.label}</span>
+                      <span className="text-cyan-400 font-bold">{chip.ga}</span>
                   </span>
               ))}
           </div>
@@ -856,34 +866,34 @@ export default function DevicesPage() {
       {/* KNXPROJ IMPORT REVIEW MODAL */}
       {importReview && importReview.isKnxProj && (
           <div className="dialog-overlay">
-             <div className="dialog-content" style={{ width: '800px', maxWidth: '95%', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+             <div className="dialog-content" style={{ width: '1280px', maxWidth: '96vw', maxHeight: '88vh', display: 'flex', flexDirection: 'column', padding: '28px' }}>
 
-                 <div style={{ padding: '16px 0' }} className="border-b border-[var(--border)] flex justify-between items-center">
-                     <h3 className="text-xl m-0 text-[var(--success)] font-semibold flex items-center gap-2">
-                         <span>📥 Review ETS Import:</span>
+                 <div style={{ paddingBottom: '20px' }} className="border-b border-[var(--border)] flex justify-between items-center">
+                     <h3 className="text-2xl m-0 text-[var(--success)] font-bold flex items-center gap-3">
+                         <span>📥 Review ETS Import</span>
                          <span className="text-sm font-normal text-[var(--text-secondary)]">({importReview.summary.total_devices} devices parsed)</span>
                      </h3>
-                     <button onClick={() => setImportReview(null)} className="text-2xl text-[var(--text-secondary)] hover:text-white leading-none">&times;</button>
+                     <button onClick={() => setImportReview(null)} className="text-3xl text-[var(--text-secondary)] hover:text-white leading-none transition-colors">&times;</button>
                  </div>
 
-                 <div className="flex-1 custom-scrollbar" style={{ overflowY: 'auto', padding: '16px 0' }}>
+                 <div className="flex-1 custom-scrollbar flex flex-col gap-6" style={{ overflowY: 'auto', padding: '20px 0' }}>
 
-                     <div className="grid grid-cols-4 gap-4 mb-6">
-                         <div style={{ background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: 'var(--radius-sm)' }}>
-                             <span className="text-xs text-[var(--text-secondary)] block">Total Devices</span>
-                             <strong className="text-xl">{importReview.summary.total_devices}</strong>
+                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                         <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', padding: '16px', borderRadius: '12px' }}>
+                             <span className="text-xs text-[var(--text-secondary)] font-medium uppercase tracking-wider block mb-1">Total Devices</span>
+                             <strong className="text-2xl font-bold text-white">{importReview.summary.total_devices}</strong>
                          </div>
-                         <div style={{ background: 'rgba(16, 185, 129, 0.1)', padding: '12px', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
-                             <span className="text-xs text-[var(--text-secondary)] block">Ready to Import</span>
-                             <strong className="text-xl text-[var(--success)]">{importReview.summary.ready}</strong>
+                         <div style={{ background: 'rgba(16, 185, 129, 0.05)', border: '1px solid rgba(16, 185, 129, 0.15)', padding: '16px', borderRadius: '12px' }}>
+                             <span className="text-xs text-[var(--text-secondary)] font-medium uppercase tracking-wider block mb-1">Ready to Import</span>
+                             <strong className="text-2xl font-bold text-[var(--success)]">{importReview.summary.ready}</strong>
                          </div>
-                         <div style={{ background: 'rgba(245, 158, 11, 0.1)', padding: '12px', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(245, 158, 11, 0.2)' }}>
-                             <span className="text-xs text-[var(--text-secondary)] block">Needs Review</span>
-                             <strong className="text-xl text-[var(--warning)]">{importReview.summary.needs_review}</strong>
+                         <div style={{ background: 'rgba(245, 158, 11, 0.05)', border: '1px solid rgba(245, 158, 11, 0.15)', padding: '16px', borderRadius: '12px' }}>
+                             <span className="text-xs text-[var(--text-secondary)] font-medium uppercase tracking-wider block mb-1">Needs Review</span>
+                             <strong className="text-2xl font-bold text-[var(--warning)]">{importReview.summary.needs_review}</strong>
                          </div>
-                         <div style={{ background: 'rgba(239, 68, 68, 0.1)', padding: '12px', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
-                             <span className="text-xs text-[var(--text-secondary)] block">Missing Info</span>
-                             <strong className="text-xl text-[var(--danger)]">{importReview.summary.missing_info}</strong>
+                         <div style={{ background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.15)', padding: '16px', borderRadius: '12px' }}>
+                             <span className="text-xs text-[var(--text-secondary)] font-medium uppercase tracking-wider block mb-1">Missing Info</span>
+                             <strong className="text-2xl font-bold text-[var(--danger)]">{importReview.summary.missing_info}</strong>
                          </div>
                      </div>
 
@@ -897,25 +907,25 @@ export default function DevicesPage() {
                          </div>
                      )}
 
-                     <div className="flex gap-6 mb-6 p-4 rounded bg-[rgba(255,255,255,0.02)] border border-[var(--border)]">
-                         <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                     <div className="flex flex-col sm:flex-row gap-6 mb-6 p-4 rounded-xl bg-white/[0.02] border border-white/5" style={{ padding: '14px 20px', gap: '24px' }}>
+                         <label className="flex items-center gap-3 text-sm cursor-pointer select-none text-white/80 hover:text-white transition-colors">
                              <input
                                  type="checkbox"
                                  checked={importReview.includeNeedsReview || false}
                                  onChange={(e) => setImportReview({ ...importReview, includeNeedsReview: e.target.checked })}
-                                 className="cursor-pointer"
+                                 className="w-4 h-4 rounded border-white/10 bg-white/5 text-blue-600 focus:ring-0 focus:ring-offset-0 cursor-pointer"
                              />
-                             <span>Include devices needing review (<code>needs_review</code>)</span>
+                             <span className="font-medium">Include devices needing review</span>
                          </label>
 
-                         <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                         <label className="flex items-center gap-3 text-sm cursor-pointer select-none text-white/80 hover:text-white transition-colors">
                              <input
                                  type="checkbox"
                                  checked={importReview.allowDuplicates || false}
                                  onChange={(e) => setImportReview({ ...importReview, allowDuplicates: e.target.checked })}
-                                 className="cursor-pointer"
+                                 className="w-4 h-4 rounded border-white/10 bg-white/5 text-blue-600 focus:ring-0 focus:ring-offset-0 cursor-pointer"
                              />
-                             <span className="text-[var(--warning)]">Allow duplicate group addresses (force import)</span>
+                             <span className="text-[var(--warning)] font-medium">Allow duplicate group addresses (force import)</span>
                          </label>
                      </div>
 
@@ -938,13 +948,10 @@ export default function DevicesPage() {
 
                           return (
                               <>
-                                  <div className="mb-2 flex flex-col md:flex-row md:justify-between md:items-center gap-2">
-                                      <h4 className="text-sm font-semibold text-white">Physical Devices Preview</h4>
-                                      <span className="text-xs text-[var(--text-secondary)] italic">
-                                          💡 Một thiết bị vật lý KNX có thể có nhiều ngõ ra (Logical Channel). Mỗi ngõ ra sẽ được import thành một thiết bị riêng để điều khiển.
-                                      </span>
+                                  <div style={{ marginTop: '12px', marginBottom: '8px' }}>
+                                      <h4 className="text-base font-bold text-white tracking-wide">Physical Devices Preview</h4>
                                   </div>
-                                  <div className="space-y-4 mb-6 custom-scrollbar" style={{ maxHeight: '40vh', overflowY: 'auto', paddingRight: '4px' }}>
+                                  <div className="space-y-5 mb-6 custom-scrollbar" style={{ maxHeight: '48vh', overflowY: 'auto', paddingRight: '6px' }}>
                                       {importReview.devices.length === 0 ? (
                                           <div className="p-8 text-center bg-[rgba(0,0,0,0.2)] rounded border border-[var(--border)] text-[var(--text-secondary)]">
                                               Không có thiết bị logic nào được đề xuất bóc tách.
@@ -955,74 +962,77 @@ export default function DevicesPage() {
                                               const metaLabel = [group.manufacturer, group.product].filter(Boolean).join(' / ');
 
                                               return (
-                                                  <div key={gIdx} className="border border-[var(--border)] rounded overflow-hidden bg-[rgba(0,0,0,0.15)]">
+                                                  <div key={gIdx} className="border border-white/10 rounded-xl overflow-hidden bg-white/[0.03] hover:border-white/20 transition-all shadow-sm" style={{ marginBottom: '18px', padding: '20px' }}>
                                                       {/* Group Header */}
                                                       <div
                                                           onClick={() => toggleGroup(group.physical_address)}
-                                                          className="p-3 bg-[rgba(255,255,255,0.02)] hover:bg-[rgba(255,255,255,0.05)] cursor-pointer flex justify-between items-center transition-colors"
+                                                          className="cursor-pointer flex flex-col md:flex-row md:justify-between md:items-center gap-4 select-none pb-4 border-b border-white/5"
                                                       >
-                                                          <div>
-                                                              <strong className="text-[var(--accent)] font-mono text-sm">{group.physical_address}</strong>
-                                                              <span className="ml-2 font-medium text-sm text-white">{group.ets_device_name || 'Unknown Device'}</span>
+                                                          <div className="flex flex-col gap-2">
+                                                              <div className="flex flex-wrap items-center gap-3">
+                                                                  <span className="text-[var(--accent)] font-mono text-base font-bold bg-[var(--accent-soft)] px-3 py-1 rounded-lg border border-[rgba(59,130,246,0.2)] shadow-sm">
+                                                                      {group.physical_address}
+                                                                  </span>
+                                                                  <span className="font-bold text-base text-white tracking-wide">{group.ets_device_name || 'Unknown Device'}</span>
+                                                              </div>
                                                               {metaLabel && (
-                                                                  <span className="ml-3 text-xs text-[var(--text-secondary)] bg-[rgba(255,255,255,0.05)] px-2 py-0.5 rounded">
+                                                                  <span className="text-xs text-[var(--text-secondary)] font-medium tracking-wide">
                                                                       {metaLabel}
                                                                   </span>
                                                               )}
                                                           </div>
-                                                          <div className="flex items-center gap-3">
-                                                              <span className="text-xs bg-[rgba(16,185,129,0.1)] text-[var(--success)] border border-[rgba(16,185,129,0.2)] px-2 py-0.5 rounded-full font-semibold">
-                                                                  {group.channels.length} controllable {group.channels.length === 1 ? 'output' : 'outputs'}
+                                                          <div className="flex items-center justify-between md:justify-end gap-4">
+                                                              <span className="text-xs bg-[rgba(16,185,129,0.08)] text-[var(--success)] border border-[rgba(16,185,129,0.2)] px-3 py-1.5 rounded-full font-bold uppercase tracking-wider">
+                                                                  {group.channels.length} {group.channels.length === 1 ? 'output' : 'outputs'}
                                                               </span>
-                                                              <span className="text-[var(--text-secondary)] text-xs select-none">
-                                                                  {expanded ? '▲ Hide' : '▼ Expand'}
-                                                              </span>
+                                                              <button className="text-xs bg-white/5 hover:bg-white/10 text-white/80 hover:text-white border border-white/10 px-3 py-1.5 rounded-lg transition-colors font-medium">
+                                                                  {expanded ? 'Hide ▲' : 'Show ▼'}
+                                                              </button>
                                                           </div>
                                                       </div>
 
                                                       {/* Channels List */}
                                                       {expanded && (
-                                                          <div className="p-3 border-t border-[var(--border)] bg-black/10">
-                                                              <table className="w-full text-xs text-left">
-                                                                  <thead>
-                                                                      <tr className="text-[var(--text-secondary)] border-b border-[var(--border)]/50 pb-1">
-                                                                          <th className="pb-1 w-24">Logical Channel</th>
-                                                                          <th className="pb-1 w-48">Logical Name</th>
-                                                                          <th className="pb-1 w-24">Room</th>
-                                                                          <th className="pb-1 w-20">Type</th>
-                                                                          <th className="pb-1 w-24">Status</th>
-                                                                          <th className="pb-1 w-16 text-right">Confidence</th>
-                                                                      </tr>
-                                                                  </thead>
-                                                                  <tbody>
-                                                                      {group.channels.map((d, cIdx) => (
-                                                                          <tr key={cIdx} className="border-b border-[var(--border)]/30 hover:bg-[rgba(255,255,255,0.01)] last:border-none">
-                                                                              <td className="py-2 text-[var(--accent)] font-mono font-medium">
+                                                          <div className="flex flex-col gap-3 mt-4">
+                                                              {group.channels.map((d, cIdx) => (
+                                                                  <div key={cIdx} className="p-4 bg-black/30 hover:bg-black/40 border border-white/5 rounded-lg transition-all flex flex-col gap-3" style={{ padding: '14px 16px', marginTop: '10px' }}>
+                                                                      {/* Dòng 1: Channel Badge, Logical Name, Status, Confidence */}
+                                                                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                                                                          <div className="flex items-center gap-3">
+                                                                              <span className="text-[var(--accent)] font-mono font-bold text-xs bg-[var(--accent-soft)] px-2.5 py-1 rounded border border-[rgba(59,130,246,0.15)]">
                                                                                   {d.source.channel || 'MAIN'}
-                                                                              </td>
-                                                                              <td className="py-2">
-                                                                                  <div className="font-medium text-white">{d.name}</div>
-                                                                                  {renderGAs(d)}
-                                                                              </td>
-                                                                              <td className="py-2 text-[var(--text-secondary)]">{d.room}</td>
-                                                                              <td className="py-2">
-                                                                                  <span className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-[10px] uppercase font-mono">
-                                                                                      {d.type}
-                                                                                  </span>
-                                                                              </td>
-                                                                              <td className="py-2">
-                                                                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase" style={{
-                                                                                      background: d.status === 'ready' ? 'rgba(16, 185, 129, 0.15)' : (d.status === 'needs_review' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(239, 68, 68, 0.15)'),
-                                                                                      color: d.status === 'ready' ? 'var(--success)' : (d.status === 'needs_review' ? 'var(--warning)' : 'var(--danger)')
-                                                                                  }}>
-                                                                                      {d.status}
-                                                                                  </span>
-                                                                              </td>
-                                                                              <td className="py-2 font-mono text-right">{(d.confidence * 100).toFixed(0)}%</td>
-                                                                          </tr>
-                                                                      ))}
-                                                                  </tbody>
-                                                              </table>
+                                                                              </span>
+                                                                              <span className="font-semibold text-[15px] text-white tracking-wide">{d.name}</span>
+                                                                          </div>
+
+                                                                          <div className="flex items-center gap-3">
+                                                                              <span className="px-2.5 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider" style={{
+                                                                                  background: d.status === 'ready' ? 'rgba(16, 185, 129, 0.08)' : (d.status === 'needs_review' ? 'rgba(245, 158, 11, 0.08)' : 'rgba(239, 68, 68, 0.08)'),
+                                                                                  color: d.status === 'ready' ? 'var(--success)' : (d.status === 'needs_review' ? 'var(--warning)' : 'var(--danger)'),
+                                                                                  border: `1px solid ${d.status === 'ready' ? 'rgba(16, 185, 129, 0.15)' : (d.status === 'needs_review' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(239, 68, 68, 0.15)')}`
+                                                                              }}>
+                                                                                  {d.status}
+                                                                              </span>
+                                                                              <span className="text-xs font-mono text-[var(--text-secondary)]">
+                                                                                  Confidence: <span className="text-white font-semibold">{(d.confidence * 100).toFixed(0)}%</span>
+                                                                              </span>
+                                                                          </div>
+                                                                      </div>
+
+                                                                      {/* Dòng 2: Room & Type Badges */}
+                                                                      <div className="flex items-center gap-2">
+                                                                          <span className="text-xs text-[var(--text-secondary)] bg-white/5 border border-white/5 px-2.5 py-0.5 rounded font-medium">
+                                                                              Room: {d.room}
+                                                                          </span>
+                                                                          <span className="text-[10px] font-mono uppercase bg-blue-500/10 text-[var(--accent)] border border-blue-500/20 px-2 py-0.5 rounded font-bold">
+                                                                              Type: {d.type}
+                                                                          </span>
+                                                                      </div>
+
+                                                                      {/* Dòng 3: GA Chips */}
+                                                                      {renderGAs(d)}
+                                                                  </div>
+                                                              ))}
                                                           </div>
                                                       )}
                                                   </div>
@@ -1035,12 +1045,12 @@ export default function DevicesPage() {
                       })()}
 
                       {importReview.unmapped && importReview.unmapped.length > 0 && (
-                          <div className="mb-4">
-                              <h4 className="text-sm font-semibold mb-2">Group Addresses chưa ánh xạ ({importReview.unmapped.length})</h4>
-                              <div style={{ background: 'rgba(0,0,0,0.2)', padding: '12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-                                  <div className="text-xs font-mono text-[var(--text-secondary)] flex flex-wrap gap-2 max-h-[150px] overflow-y-auto custom-scrollbar">
+                          <div style={{ background: 'rgba(255,255,255,0.01)', border: '1px solid rgba(255,255,255,0.04)', padding: '20px', borderRadius: '12px', marginTop: '24px', marginBottom: '24px' }}>
+                              <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)] mb-3">Unmapped Group Addresses ({importReview.unmapped.length})</h4>
+                              <div style={{ background: 'rgba(0,0,0,0.15)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.04)' }}>
+                                  <div className="text-[12px] font-mono text-white/50 flex flex-wrap gap-2 max-h-[120px] overflow-y-auto custom-scrollbar">
                                       {importReview.unmapped.map((ga, idx) => (
-                                          <span key={idx} className="bg-[rgba(255,255,255,0.05)] px-2 py-0.5 rounded border border-[var(--border)]">
+                                          <span key={idx} className="bg-white/5 px-2.5 py-1 rounded border border-white/5 font-medium">
                                               {ga}
                                           </span>
                                       ))}
