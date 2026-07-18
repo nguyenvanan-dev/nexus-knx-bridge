@@ -1,0 +1,14 @@
+{
+  "schema_version": 2,
+  "name": "ask-butler-nemotron",
+  "description": "Gọi quản gia Nemotron để hỏi các vấn đề cần suy luận sâu, tổng hợp dữ liệu dài, lên kế hoạch phức tạp. Tuyệt đối không dùng tool này để điều khiển đèn hay hỏi thời tiết.",
+  "intents": ["ask-butler-nemotron", "ask_nemotron"],
+  "run": "python3 /home/an/knx-bridge/tools/ask-butler-nemotron/main.py",
+  "input": {
+    "type": "object",
+    "properties": {
+      "question": { "type": "string", "description": "Câu hỏi chi tiết dành cho quản gia Nemotron" }
+    },
+    "required": ["question"]
+  }
+}

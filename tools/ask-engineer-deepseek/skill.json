@@ -1,0 +1,14 @@
+{
+  "schema_version": 2,
+  "name": "ask-engineer-deepseek",
+  "description": "Gọi kỹ sư DeepSeek để hỏi các vấn đề về đọc log, phân tích lỗi (debug), và viết code. Tuyệt đối không dùng tool này để điều khiển đèn hay hỏi thời tiết.",
+  "intents": ["ask-engineer-deepseek", "ask_deepseek"],
+  "run": "python3 /home/an/knx-bridge/tools/ask-engineer-deepseek/main.py",
+  "input": {
+    "type": "object",
+    "properties": {
+      "question": { "type": "string", "description": "Câu hỏi chi tiết dành cho kỹ sư DeepSeek" }
+    },
+    "required": ["question"]
+  }
+}

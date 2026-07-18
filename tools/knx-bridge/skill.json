@@ -1,0 +1,14 @@
+{
+  "schema_version": 2,
+  "name": "knx-bridge",
+  "description": "Sử dụng skill này để truyền câu lệnh vào KNX Bridge nhằm điều khiển hệ thống nhà thông minh hoặc lấy trạng thái các thiết bị.",
+  "intents": ["knx-bridge"],
+  "run": "python3 /home/an/knx-bridge/tools/knx-bridge/main.py",
+  "input": {
+    "type": "object",
+    "properties": {
+      "command_text": { "type": "string", "description": "Câu lệnh dạng văn bản truyền đến KNX Bridge, ví dụ: 'bật đèn H', 'tắt tất cả đèn', 'trạng thái đèn H', 'trạng thái các thiết bị'" }
+    },
+    "required": ["command_text"]
+  }
+}

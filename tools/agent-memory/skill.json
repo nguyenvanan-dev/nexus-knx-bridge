@@ -1,0 +1,48 @@
+{
+  "name": "agent-memory",
+  "description": "Lưu trữ hoặc tìm kiếm thông tin quan trọng trong Local Memory (Sổ tay vĩnh viễn) của Bot. Hãy DÙNG KỸ NĂNG NÀY mỗi khi cần nhớ luật lệ, tên người, thiết bị KNX, hoặc tìm thông tin bị quên.",
+  "executable": "python3 /home/an/knx-bridge/tools/agent-memory/main.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "description": "Hành động: 'search' (để tìm kiếm) hoặc 'remember' (để lưu thông tin mới).",
+        "enum": ["search", "remember"]
+      },
+      "query": {
+        "type": "string",
+        "description": "Từ khóa tìm kiếm (chỉ bắt buộc khi action='search'). VD: 'đèn phòng khách' hoặc 'sếp là ai'."
+      },
+      "content": {
+        "type": "string",
+        "description": "Nội dung cần lưu (chỉ bắt buộc khi action='remember')."
+      },
+      "wing": {
+        "type": "string",
+        "description": "Khu vực chính (Ví dụ: System, Users, Devices, Config). Mặc định 'System'."
+      },
+      "hall": {
+        "type": "string",
+        "description": "Phân khu chi tiết (Ví dụ: Notes, Errors, Preferences). Mặc định 'notes'."
+      },
+      "room": {
+        "type": "string",
+        "description": "Tên đối tượng hoặc bối cảnh cụ thể (Ví dụ: Phòng Khách, An, WiFi). Mặc định 'general'."
+      },
+      "topic": {
+        "type": "string",
+        "description": "Chủ đề của nội dung. Mặc định 'general'."
+      },
+      "tags": {
+        "type": "string",
+        "description": "Các từ khóa (phân cách bằng dấu phẩy) để hỗ trợ tìm kiếm."
+      },
+      "importance": {
+        "type": "integer",
+        "description": "Mức độ quan trọng từ 1 đến 5 (5 là tối quan trọng). Mặc định là 3."
+      }
+    },
+    "required": ["action"]
+  }
+}

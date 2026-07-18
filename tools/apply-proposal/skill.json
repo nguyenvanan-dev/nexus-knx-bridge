@@ -1,0 +1,15 @@
+{
+  "name": "apply-proposal",
+  "description": "Duyệt và áp dụng danh sách thiết bị từ bản nháp (proposal) vào hệ thống chính thức. DÙNG KỸ NĂNG NÀY khi người dùng xác nhận 'Duyệt', 'Apply' hoặc đồng ý thêm thiết bị vào hệ thống.",
+  "executable": "python3 /home/an/knx-bridge/tools/apply-proposal/main.py",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "proposal_path": {
+        "type": "string",
+        "description": "Đường dẫn tới file proposal JSON cần duyệt (Thường do document-reader tạo ra, nằm trong ~/.openclaw/workspace/knowledge/review/...)."
+      }
+    },
+    "required": ["proposal_path"]
+  }
+}
