@@ -1,0 +1,25 @@
+{
+  "schema_version": 2,
+  "name": "propose-skill",
+  "description": "Dùng khi người dùng yêu cầu Bot tự tạo một kỹ năng (skill) mới. Tool này sẽ lưu mã nguồn Python và cấu hình JSON của skill vào thư mục nháp (proposal) để người dùng kiểm duyệt. KHÔNG chạy lệnh này trừ khi được yêu cầu tạo skill.",
+  "intents": ["create_skill", "propose_skill"],
+  "run": "python3 /home/an/knx-bridge/tools/propose-skill/main.py",
+  "input": {
+    "type": "object",
+    "properties": {
+      "skill_name": {
+        "type": "string",
+        "description": "Tên của skill, ví dụ: 'weather-skill', viết liền không dấu, dùng dấu gạch ngang."
+      },
+      "description": {
+        "type": "string",
+        "description": "Mô tả chức năng của skill, viết bằng tiếng Việt."
+      },
+      "python_code": {
+        "type": "string",
+        "description": "Toàn bộ mã nguồn Python của file main.py."
+      }
+    },
+    "required": ["skill_name", "description", "python_code"]
+  }
+}
