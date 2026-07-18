@@ -32,50 +32,75 @@ def _safe_device_id(dev: dict) -> str:
 
 def _extract_any_ga(dev: dict) -> list[str]:
     """Extract all group addresses from a device dict, including nested capabilities and raw fields."""
+    if not isinstance(dev, dict):
+        return []
+
     gas = []
+
+    # Safe get legacy_fields
+    legacy_fields = dev.get("legacy_fields")
+    if not isinstance(legacy_fields, dict):
+        legacy_fields = {}
 
     # Top-level & legacy_fields
     for key in ("onoff_ga", "status_ga", "brightness_ga", "brightness_status_ga",
                 "color_ga", "color_status_ga", "color_rgb_ga", "color_temp_ga"):
         # Top-level
         val = dev.get(key)
-        if val:
+        if isinstance(val, str) and val.strip():
             gas.append(val)
         # legacy_fields
-        val_legacy = dev.get("legacy_fields", {}).get(key)
-        if val_legacy:
+        val_legacy = legacy_fields.get(key)
+        if isinstance(val_legacy, str) and val_legacy.strip():
             gas.append(val_legacy)
 
     # Check functions list
-    for fn in dev.get("functions", []):
-        ga = fn.get("group_address")
-        if ga:
-            gas.append(ga)
+    functions = dev.get("functions")
+    if not isinstance(functions, list):
+        functions = []
+    for fn in functions:
+        if isinstance(fn, dict):
+            ga = fn.get("group_address")
+            if isinstance(ga, str) and ga.strip():
+                gas.append(ga)
+
+    # Resolve knx_config_payload
+    payload = dev.get("knx_config_payload")
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except Exception:
+            payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
 
     # Check capabilities nested dicts
-    caps = dev.get("capabilities", {})
-    if not caps and "knx_config_payload" in dev:
-        payload = dev["knx_config_payload"]
-        if isinstance(payload, str):
-            try:
-                payload = json.loads(payload)
-            except Exception:
-                payload = {}
-        if isinstance(payload, dict):
-            caps = payload.get("capabilities", {})
+    caps = dev.get("capabilities")
+    if not isinstance(caps, dict):
+        caps = {}
 
-    if isinstance(caps, dict):
-        for cap_name, cap_val in caps.items():
-            if isinstance(cap_val, dict):
-                for k, v in cap_val.items():
-                    if k.endswith("_ga") or k == "write_ga" or k == "status_ga":
-                        if v:
-                            gas.append(v)
+    if not caps:
+        caps = payload.get("capabilities")
+        if not isinstance(caps, dict):
+            caps = {}
+
+    for cap_name, cap_val in caps.items():
+        if isinstance(cap_val, dict):
+            for k, v in cap_val.items():
+                if k.endswith("_ga") or k == "write_ga" or k == "status_ga":
+                    if isinstance(v, str) and v.strip():
+                        gas.append(v)
 
     # Raw GAs
-    raw_gas = dev.get("knx_config_payload", {}).get("raw", {}).get("group_addresses", [])
+    raw_data = payload.get("raw")
+    if not isinstance(raw_data, dict):
+        raw_data = {}
+    raw_gas = raw_data.get("group_addresses")
+    if not isinstance(raw_gas, list):
+        raw_gas = []
     for rg in raw_gas:
-        gas.append(rg)
+        if isinstance(rg, str) and rg.strip():
+            gas.append(rg)
 
     # Normalize GAs and unique
     normalized = []
@@ -244,7 +269,9 @@ def main():
                 continue
 
             # Fallback legacy fields mapping
-            legacy = dev.get("legacy_fields", {})
+            legacy = dev.get("legacy_fields")
+            if not isinstance(legacy, dict):
+                legacy = {}
             onoff_ga = dev.get("onoff_ga") or legacy.get("onoff_ga", "")
             status_ga = dev.get("status_ga") or legacy.get("status_ga", "")
             brightness_ga = dev.get("brightness_ga") or legacy.get("brightness_ga", "")
@@ -301,7 +328,10 @@ def main():
                 ))
                 updated += 1
             else:
-                aliases_json = json.dumps(dev.get("aliases", []), ensure_ascii=False)
+                aliases = dev.get("aliases")
+                if not isinstance(aliases, list):
+                    aliases = []
+                aliases_json = json.dumps(aliases, ensure_ascii=False)
                 cursor.execute("""
                     INSERT INTO devices (
                         device_id, name, type, room,
