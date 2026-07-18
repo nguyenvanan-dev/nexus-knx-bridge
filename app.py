@@ -4169,6 +4169,9 @@ async def api_knx_read(req: KNXReadRequest, current_user: dict = Depends(auth_ut
 
 from fastapi import UploadFile, File, Form
 import os
+import time
+import subprocess
+from pydantic import BaseModel
 
 @app.post("/api/devices/import_knxproj")
 async def import_knxproj(
@@ -4176,18 +4179,157 @@ async def import_knxproj(
     password: str = Form(None),
     current_user: dict = Depends(auth_utils.require_admin)
 ):
+    import tempfile
+    temp_path = None
     try:
-        temp_path = "/tmp/temp_knxproj.knxproj"
-        with open(temp_path, "wb") as f_out:
-            f_out.write(await file.read())
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".knxproj") as tmp_file:
+            tmp_file.write(await file.read())
+            temp_path = tmp_file.name
+
+        from core.knxproj_parser import ETSParser
+        parser = ETSParser()
+        result = parser.parse_project(temp_path, password)
+        return result
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
+
+
+@app.post("/api/knxproj/parse")
+async def api_knxproj_parse(
+    file: UploadFile = File(...),
+    password: str = Form(None),
+    current_user: dict = Depends(auth_utils.require_admin)
+):
+    import tempfile
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".knxproj") as tmp_file:
+            tmp_file.write(await file.read())
+            temp_path = tmp_file.name
 
         from core.knxproj_parser import ETSParser
         parser = ETSParser()
         result = parser.parse_project(temp_path, password)
 
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
+        if "status" in result and result["status"] == "error":
+            return result
 
+        # Save proposal to the review directory
+        review_dir = os.path.expanduser("~/.openclaw/workspace/knowledge/review")
+        os.makedirs(review_dir, exist_ok=True)
+        timestamp = int(time.time())
+        stem_clean = "".join(c for c in file.filename if c.isalnum() or c in "._-")
+        output_path = os.path.join(review_dir, f"knxproj_proposal_{timestamp}_{stem_clean}.json")
+
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(result, f, ensure_ascii=False, indent=2)
+
+        result["proposal_path"] = output_path
         return result
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
+
+
+@app.get("/api/device-proposals/latest")
+async def api_device_proposals_latest(current_user: dict = Depends(auth_utils.require_admin)):
+    try:
+        review_dir = os.path.expanduser("~/.openclaw/workspace/knowledge/review")
+        if not os.path.exists(review_dir):
+            return {"status": "error", "message": "No proposals found (review directory does not exist)"}
+
+        files = [
+            os.path.join(review_dir, f)
+            for f in os.listdir(review_dir)
+            if f.startswith("knxproj_proposal_") and f.endswith(".json")
+        ]
+        if not files:
+            return {"status": "error", "message": "No proposals found"}
+
+        # Sort by modification time to get the latest
+        files.sort(key=os.path.getmtime, reverse=True)
+        latest_file = files[0]
+
+        with open(latest_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        data["proposal_path"] = latest_file
+        return data
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+class ApplyProposalRequest(BaseModel):
+    proposal_path: str
+    confirm: bool = False
+    include_needs_review: bool = False
+    allow_duplicates: bool = False
+
+
+@app.post("/api/device-proposals/apply")
+async def api_device_proposals_apply(
+    req: ApplyProposalRequest,
+    current_user: dict = Depends(auth_utils.require_admin)
+):
+    try:
+        from pathlib import Path
+        resolved_path = Path(req.proposal_path).expanduser().resolve()
+        review_dir = (Path.home() / ".openclaw" / "workspace" / "knowledge" / "review").resolve()
+
+        try:
+            resolved_path.relative_to(review_dir)
+        except ValueError:
+            return {"status": "error", "message": "Access denied: proposal path must be inside the review directory"}
+
+        if not resolved_path.exists() or resolved_path.suffix.lower() != ".json":
+            return {"status": "error", "message": "Invalid proposal file (must be an existing JSON file)"}
+
+        # Call tools/apply_device_proposal.py via subprocess to reuse all validation/backup logic
+        cmd = [
+            "/home/an/knx-bridge/.venv/bin/python",
+            "/home/an/knx-bridge/tools/apply_device_proposal.py",
+            str(resolved_path)
+        ]
+        if req.confirm:
+            cmd.append("--confirm")
+        else:
+            cmd.append("--dry-run")
+        if req.include_needs_review:
+            cmd.append("--include-needs-review")
+        if req.allow_duplicates:
+            cmd.append("--allow-duplicates")
+
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+
+        # If confirm was successful, reload the registry cache
+        if req.confirm and res.returncode == 0:
+            try:
+                global device_registry
+                device_registry.reload()
+            except Exception as reload_err:
+                return {
+                    "status": "partial_success",
+                    "message": f"Applied successfully but failed to reload registry: {reload_err}",
+                    "stdout": res.stdout,
+                    "stderr": res.stderr
+                }
+
+        return {
+            "status": "success" if res.returncode == 0 else "error",
+            "code": res.returncode,
+            "stdout": res.stdout,
+            "stderr": res.stderr
+        }
     except Exception as e:
         return {"status": "error", "message": str(e)}

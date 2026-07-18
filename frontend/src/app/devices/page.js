@@ -430,6 +430,43 @@ export default function DevicesPage() {
   const importDevices = async (e) => {
       const file = e.target.files[0];
       if (!file) return;
+
+      if (file.name.endsWith('.knxproj')) {
+          const password = prompt("Nhập mật khẩu file ETS .knxproj (để trống nếu không có):") || "";
+          try {
+              setIsSaving(true);
+              const formData = new FormData();
+              formData.append("file", file);
+              if (password) {
+                  formData.append("password", password);
+              }
+              const res = await fetch('/api/knxproj/parse', {
+                  method: 'POST',
+                  body: formData
+              });
+              const result = await res.json();
+              if (result.status === 'error') {
+                  throw new Error(result.message);
+              }
+
+              setImportReview({
+                  isKnxProj: true,
+                  proposal_path: result.proposal_path,
+                  summary: result.summary,
+                  devices: result.proposed_devices,
+                  duplicates: result.duplicates,
+                  unmapped: result.unmapped_group_addresses,
+                  conflicts: result.duplicates.map(d => `GA '${d.group_address}' is shared between devices ${d.devices.join(', ')}`)
+              });
+          } catch (err) {
+              showDialog("KNXProj Parse Error", err.message, "danger");
+          } finally {
+              setIsSaving(false);
+              e.target.value = null; // reset input
+          }
+          return;
+      }
+
       const reader = new FileReader();
       reader.onload = async (event) => {
           try {
@@ -655,7 +692,7 @@ export default function DevicesPage() {
       )}
 
       {/* IMPORT REVIEW MODAL */}
-      {importReview && (
+      {importReview && !importReview.isKnxProj && (
           <div className="dialog-overlay">
              <div className="dialog-content" style={{ width: '600px', maxWidth: '90%', maxHeight: '80vh', overflowY: 'auto' }}>
                  <h3 className="text-xl mb-4 text-[var(--success)]">Review Import ({importReview.devices.length} devices)</h3>
@@ -697,6 +734,177 @@ export default function DevicesPage() {
                          <button onClick={() => confirmImport('skip')} disabled={isSaving} className="btn-secondary">Skip</button>
                          <button onClick={() => confirmImport('overwrite')} disabled={isSaving} className="btn-secondary" style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }}>Overwrite</button>
                          <button onClick={() => confirmImport('rename')} disabled={isSaving} className="btn-primary">Rename</button>
+                     </div>
+                 </div>
+             </div>
+          </div>
+      )}
+
+      {/* KNXPROJ IMPORT REVIEW MODAL */}
+      {importReview && importReview.isKnxProj && (
+          <div className="dialog-overlay">
+             <div className="dialog-content" style={{ width: '800px', maxWidth: '95%', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+
+                 <div style={{ padding: '16px 0' }} className="border-b border-[var(--border)] flex justify-between items-center">
+                     <h3 className="text-xl m-0 text-[var(--success)] font-semibold flex items-center gap-2">
+                         <span>📥 Review ETS Import:</span>
+                         <span className="text-sm font-normal text-[var(--text-secondary)]">({importReview.summary.total_devices} devices parsed)</span>
+                     </h3>
+                     <button onClick={() => setImportReview(null)} className="text-2xl text-[var(--text-secondary)] hover:text-white leading-none">&times;</button>
+                 </div>
+
+                 <div className="flex-1 custom-scrollbar" style={{ overflowY: 'auto', padding: '16px 0' }}>
+
+                     <div className="grid grid-cols-4 gap-4 mb-6">
+                         <div style={{ background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: 'var(--radius-sm)' }}>
+                             <span className="text-xs text-[var(--text-secondary)] block">Total Devices</span>
+                             <strong className="text-xl">{importReview.summary.total_devices}</strong>
+                         </div>
+                         <div style={{ background: 'rgba(16, 185, 129, 0.1)', padding: '12px', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
+                             <span className="text-xs text-[var(--text-secondary)] block">Ready to Import</span>
+                             <strong className="text-xl text-[var(--success)]">{importReview.summary.ready}</strong>
+                         </div>
+                         <div style={{ background: 'rgba(245, 158, 11, 0.1)', padding: '12px', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(245, 158, 11, 0.2)' }}>
+                             <span className="text-xs text-[var(--text-secondary)] block">Needs Review</span>
+                             <strong className="text-xl text-[var(--warning)]">{importReview.summary.needs_review}</strong>
+                         </div>
+                         <div style={{ background: 'rgba(239, 68, 68, 0.1)', padding: '12px', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+                             <span className="text-xs text-[var(--text-secondary)] block">Missing Info</span>
+                             <strong className="text-xl text-[var(--danger)]">{importReview.summary.missing_info}</strong>
+                         </div>
+                     </div>
+
+                     {importReview.conflicts.length > 0 && (
+                         <div style={{ background: 'rgba(231, 101, 107, 0.1)', border: '1px solid var(--danger)', padding: '12px', borderRadius: 'var(--radius-sm)', marginBottom: '16px' }}>
+                             <strong className="text-[var(--danger)] text-sm">⚠️ Group Address Collisions Detected:</strong>
+                             <ul className="mt-2 pl-4 text-xs text-[var(--danger)] list-disc">
+                                 {importReview.conflicts.slice(0, 5).map((c, i) => <li key={i}>{c}</li>)}
+                                 {importReview.conflicts.length > 5 && <li>... and {importReview.conflicts.length - 5} more</li>}
+                             </ul>
+                         </div>
+                     )}
+
+                     <div className="flex gap-6 mb-6 p-4 rounded bg-[rgba(255,255,255,0.02)] border border-[var(--border)]">
+                         <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                             <input
+                                 type="checkbox"
+                                 checked={importReview.includeNeedsReview || false}
+                                 onChange={(e) => setImportReview({ ...importReview, includeNeedsReview: e.target.checked })}
+                                 className="cursor-pointer"
+                             />
+                             <span>Include devices needing review (<code>needs_review</code>)</span>
+                         </label>
+
+                         <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                             <input
+                                 type="checkbox"
+                                 checked={importReview.allowDuplicates || false}
+                                 onChange={(e) => setImportReview({ ...importReview, allowDuplicates: e.target.checked })}
+                                 className="cursor-pointer"
+                             />
+                             <span className="text-[var(--warning)]">Allow duplicate group addresses (force import)</span>
+                         </label>
+                     </div>
+
+                     <h4 className="text-sm font-semibold mb-2">Proposed Devices Preview</h4>
+                     <div style={{ background: 'rgba(0,0,0,0.3)', padding: '12px', borderRadius: 'var(--radius-sm)', marginBottom: '16px' }}>
+                        <table className="w-full text-sm text-left">
+                            <thead>
+                                <tr className="text-[var(--text-secondary)] border-b border-[var(--border)]">
+                                    <th className="pb-2">Physical Addr</th>
+                                    <th className="pb-2">Logical Name</th>
+                                    <th className="pb-2">Room</th>
+                                    <th className="pb-2">Type</th>
+                                    <th className="pb-2">Status</th>
+                                    <th className="pb-2">Confidence</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {importReview.devices.map((d, i) => (
+                                    <tr key={i} className="border-b border-[var(--border)] hover:bg-[rgba(255,255,255,0.02)]">
+                                        <td className="py-2 text-[var(--accent)] font-mono">{d.source.physical_address}</td>
+                                        <td className="py-2 font-medium">{d.name}</td>
+                                        <td className="py-2">{d.room}</td>
+                                        <td className="py-2"><span className="px-2 py-0.5 rounded text-xs" style={{ background: 'rgba(255,255,255,0.08)' }}>{d.type}</span></td>
+                                        <td className="py-2">
+                                            <span className="px-2 py-0.5 rounded text-xs font-semibold" style={{
+                                                background: d.status === 'ready' ? 'rgba(16, 185, 129, 0.2)' : (d.status === 'needs_review' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(239, 68, 68, 0.2)'),
+                                                color: d.status === 'ready' ? 'var(--success)' : (d.status === 'needs_review' ? 'var(--warning)' : 'var(--danger)')
+                                            }}>
+                                                {d.status}
+                                            </span>
+                                        </td>
+                                        <td className="py-2 font-mono">{(d.confidence * 100).toFixed(0)}%</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                     </div>
+
+                     {importReview.consoleOutput && (
+                         <div className="mb-4">
+                             <h4 className="text-sm font-semibold mb-2">Dry-run Output Console</h4>
+                             <pre className="p-4 rounded text-xs font-mono text-[var(--success)] bg-black overflow-x-auto" style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                                 {importReview.consoleOutput}
+                             </pre>
+                         </div>
+                     )}
+
+                 </div>
+
+                 <div className="flex justify-between gap-3 border-t border-[var(--border)] pt-4" style={{ paddingBottom: '16px' }}>
+                     <button onClick={() => setImportReview(null)} className="btn-secondary">Cancel</button>
+                     <div className="flex gap-3">
+                         <button onClick={async () => {
+                             try {
+                                 const res = await fetch('/api/device-proposals/apply', {
+                                     method: 'POST',
+                                     headers: { 'Content-Type': 'application/json' },
+                                     body: JSON.stringify({
+                                         proposal_path: importReview.proposal_path,
+                                         confirm: false,
+                                         include_needs_review: importReview.includeNeedsReview || false,
+                                         allow_duplicates: importReview.allowDuplicates || false
+                                     })
+                                 });
+                                 const output = await res.json();
+                                 setImportReview({
+                                     ...importReview,
+                                     consoleOutput: `STDOUT:\n${output.stdout || ''}\n\nSTDERR:\n${output.stderr || ''}`
+                                 });
+                             } catch (err) {
+                                 showDialog("Dry-run Error", err.message, "danger");
+                             }
+                         }} className="btn-secondary">Test (Dry-run)</button>
+
+                         <button onClick={async () => {
+                             if (!confirm("Xác nhận nạp thiết bị vào hệ thống? Thao tác này sẽ ghi đè và cập nhật DB.")) return;
+                             try {
+                                 setIsSaving(true);
+                                 const res = await fetch('/api/device-proposals/apply', {
+                                     method: 'POST',
+                                     headers: { 'Content-Type': 'application/json' },
+                                     body: JSON.stringify({
+                                         proposal_path: importReview.proposal_path,
+                                         confirm: true,
+                                         include_needs_review: importReview.includeNeedsReview || false,
+                                         allow_duplicates: importReview.allowDuplicates || false
+                                     })
+                                 });
+                                 const result = await res.json();
+                                 if (result.status === 'success') {
+                                     showToast("Import successful! Reloading devices...", "success");
+                                     await fetchDevices();
+                                     setImportReview(null);
+                                 } else {
+                                     showDialog("Import Error", `Apply failed: ${result.stderr || result.message}`, "danger");
+                                 }
+                             } catch (err) {
+                                 showDialog("Import Error", err.message, "danger");
+                             } finally {
+                                 setIsSaving(false);
+                             }
+                         }} className="btn-primary">Apply (Confirm)</button>
                      </div>
                  </div>
              </div>
