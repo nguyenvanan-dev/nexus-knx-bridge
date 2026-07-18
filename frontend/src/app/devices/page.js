@@ -445,19 +445,62 @@ export default function DevicesPage() {
                   body: formData
               });
               const result = await res.json();
-              if (result.status === 'error') {
-                  throw new Error(result.message);
+
+              if (!res.ok) {
+                  throw new Error(result.message || result.error || `HTTP ${res.status}`);
               }
 
-              setImportReview({
-                  isKnxProj: true,
-                  proposal_path: result.proposal_path,
-                  summary: result.summary,
-                  devices: result.proposed_devices,
-                  duplicates: result.duplicates,
-                  unmapped: result.unmapped_group_addresses,
-                  conflicts: result.duplicates.map(d => `GA '${d.group_address}' is shared between devices ${d.devices.join(', ')}`)
-              });
+              if (result.status === 'error' || result.ok === false) {
+                  throw new Error(result.message || result.error || 'KNXProj parse failed');
+              }
+
+              const proposedDevices = Array.isArray(result.proposed_devices) ? result.proposed_devices : [];
+              const duplicates = Array.isArray(result.duplicates) ? result.duplicates : [];
+              const unmapped = Array.isArray(result.unmapped_group_addresses) ? result.unmapped_group_addresses : [];
+
+              const summary = result.summary || {
+                  total_devices: proposedDevices.length,
+                  ready: proposedDevices.filter(d => d.status === 'ready').length,
+                  needs_review: proposedDevices.filter(d => d.status === 'needs_review').length,
+                  missing_info: proposedDevices.filter(d => d.status === 'missing_info').length,
+                  by_type: {}
+              };
+
+              if (proposedDevices.length === 0) {
+                  if (unmapped.length > 0) {
+                      setImportReview({
+                          isKnxProj: true,
+                          proposal_path: result.proposal_path,
+                          summary: summary,
+                          devices: proposedDevices,
+                          duplicates: duplicates,
+                          unmapped: unmapped,
+                          conflicts: duplicates.map(d => {
+                              const devices = Array.isArray(d.devices) ? d.devices.join(', ') : 'unknown devices';
+                              return `GA '${d.group_address || 'unknown'}' is shared between devices ${devices}`;
+                          })
+                      });
+                  } else {
+                      showDialog(
+                          "KNXProj Parse Result",
+                          "Parser chạy xong nhưng chưa ánh xạ được thiết bị logic nào. Có thể file ETS chỉ chứa group addresses hoặc schema chưa được hỗ trợ đầy đủ.",
+                          "warning"
+                      );
+                  }
+              } else {
+                  setImportReview({
+                      isKnxProj: true,
+                      proposal_path: result.proposal_path,
+                      summary: summary,
+                      devices: proposedDevices,
+                      duplicates: duplicates,
+                      unmapped: unmapped,
+                      conflicts: duplicates.map(d => {
+                          const devices = Array.isArray(d.devices) ? d.devices.join(', ') : 'unknown devices';
+                          return `GA '${d.group_address || 'unknown'}' is shared between devices ${devices}`;
+                      })
+                  });
+              }
           } catch (err) {
               showDialog("KNXProj Parse Error", err.message, "danger");
           } finally {
@@ -820,24 +863,32 @@ export default function DevicesPage() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {importReview.devices.map((d, i) => (
-                                    <tr key={i} className="border-b border-[var(--border)] hover:bg-[rgba(255,255,255,0.02)]">
-                                        <td className="py-2 text-[var(--accent)] font-mono">{d.source.physical_address}</td>
-                                        <td className="py-2 font-medium">{d.name}</td>
-                                        <td className="py-2">{d.room}</td>
-                                        <td className="py-2"><span className="px-2 py-0.5 rounded text-xs" style={{ background: 'rgba(255,255,255,0.08)' }}>{d.type}</span></td>
-                                        <td className="py-2">
-                                            <span className="px-2 py-0.5 rounded text-xs font-semibold" style={{
-                                                background: d.status === 'ready' ? 'rgba(16, 185, 129, 0.2)' : (d.status === 'needs_review' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(239, 68, 68, 0.2)'),
-                                                color: d.status === 'ready' ? 'var(--success)' : (d.status === 'needs_review' ? 'var(--warning)' : 'var(--danger)')
-                                            }}>
-                                                {d.status}
-                                            </span>
-                                        </td>
-                                        <td className="py-2 font-mono">{(d.confidence * 100).toFixed(0)}%</td>
-                                    </tr>
-                                ))}
-                            </tbody>
+                                 {importReview.devices.length === 0 ? (
+                                     <tr>
+                                         <td colSpan="6" className="py-4 text-center text-[var(--text-secondary)]">
+                                             Không có thiết bị logic nào được đề xuất bóc tách.
+                                         </td>
+                                     </tr>
+                                 ) : (
+                                     importReview.devices.map((d, i) => (
+                                         <tr key={i} className="border-b border-[var(--border)] hover:bg-[rgba(255,255,255,0.02)]">
+                                             <td className="py-2 text-[var(--accent)] font-mono">{d.source.physical_address}</td>
+                                             <td className="py-2 font-medium">{d.name}</td>
+                                             <td className="py-2">{d.room}</td>
+                                             <td className="py-2"><span className="px-2 py-0.5 rounded text-xs" style={{ background: 'rgba(255,255,255,0.08)' }}>{d.type}</span></td>
+                                             <td className="py-2">
+                                                 <span className="px-2 py-0.5 rounded text-xs font-semibold" style={{
+                                                     background: d.status === 'ready' ? 'rgba(16, 185, 129, 0.2)' : (d.status === 'needs_review' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(239, 68, 68, 0.2)'),
+                                                     color: d.status === 'ready' ? 'var(--success)' : (d.status === 'needs_review' ? 'var(--warning)' : 'var(--danger)')
+                                                 }}>
+                                                     {d.status}
+                                                 </span>
+                                             </td>
+                                             <td className="py-2 font-mono">{(d.confidence * 100).toFixed(0)}%</td>
+                                         </tr>
+                                     ))
+                                 )}
+                             </tbody>
                         </table>
                      </div>
 

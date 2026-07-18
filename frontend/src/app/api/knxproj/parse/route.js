@@ -13,9 +13,27 @@ export async function POST(req) {
             headers: authHeaders,
             body: formData
         });
-        const data = await res.json();
+
+        let data;
+        const text = await res.text();
+        try {
+            data = JSON.parse(text);
+        } catch (e) {
+            return NextResponse.json({
+                status: 'error',
+                message: `Failed to parse backend response: ${text.slice(0, 100)}`
+            }, { status: 502 });
+        }
+
+        if (!res.ok) {
+            return NextResponse.json({
+                status: 'error',
+                message: data.message || data.error || `Backend error: HTTP ${res.status}`
+            }, { status: res.status });
+        }
+
         return NextResponse.json(data, { status: res.status });
     } catch (error) {
-        return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+        return NextResponse.json({ status: 'error', message: error.message }, { status: 500 });
     }
 }
