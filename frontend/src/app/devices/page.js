@@ -426,6 +426,76 @@ export default function DevicesPage() {
   };
 
   const [importReview, setImportReview] = useState(null);
+  const [expandedGroups, setExpandedGroups] = useState({});
+
+  const isGroupExpanded = (physAddr) => {
+      if (expandedGroups[physAddr] !== undefined) {
+          return expandedGroups[physAddr];
+      }
+      return (importReview?.devices || []).length <= 20;
+  };
+
+  const toggleGroup = (physAddr) => {
+      setExpandedGroups(prev => ({
+          ...prev,
+          [physAddr]: !isGroupExpanded(physAddr)
+      }));
+  };
+
+  const renderGAs = (d) => {
+      const caps = d.knx_config_payload?.capabilities || {};
+      const gaLines = [];
+
+      if (caps.onoff) {
+          gaLines.push(`On/Off: ${caps.onoff.write_ga || '-'}/${caps.onoff.status_ga || '-'}`);
+      }
+      if (caps.brightness) {
+          gaLines.push(`Bright: ${caps.brightness.write_ga || '-'}/${caps.brightness.status_ga || '-'}`);
+      }
+      if (caps.rgb) {
+          gaLines.push(`RGB: ${caps.rgb.write_ga || '-'}/${caps.rgb.status_ga || '-'}`);
+      }
+      if (caps.color_temperature) {
+          gaLines.push(`ColorTemp: ${caps.color_temperature.write_ga || '-'}/${caps.color_temperature.status_ga || '-'}`);
+      }
+      if (caps.curtain) {
+          gaLines.push(`Curtain: ${caps.curtain.write_ga || '-'}/stop:${caps.curtain.stop_ga || '-'}`);
+      }
+      if (caps.position) {
+          gaLines.push(`Pos: ${caps.position.write_ga || '-'}/${caps.position.status_ga || '-'}`);
+      }
+      if (caps.temperature) {
+          gaLines.push(`Temp: status:${caps.temperature.status_ga || '-'}`);
+      }
+      if (caps.thermostat) {
+          gaLines.push(`Thermostat: ${caps.thermostat.write_ga || '-'}/${caps.thermostat.status_ga || '-'}`);
+      }
+      if (caps.mode) {
+          gaLines.push(`Mode: ${caps.mode.write_ga || '-'}/${caps.mode.status_ga || '-'}`);
+      }
+      if (caps.sensor) {
+          gaLines.push(`Sensor: status:${caps.sensor.status_ga || '-'}`);
+      }
+
+      if (gaLines.length === 0) {
+          const lf = d.legacy_fields || {};
+          if (lf.onoff_ga || lf.status_ga) {
+              gaLines.push(`Control: ${lf.onoff_ga || '-'}/${lf.status_ga || '-'}`);
+          } else {
+              gaLines.push('No GA mapped');
+          }
+      }
+
+      return (
+          <div className="text-[10px] font-mono text-[var(--text-secondary)] flex flex-wrap gap-x-2 gap-y-0.5 mt-1">
+              {gaLines.map((line, idx) => (
+                  <span key={idx} className="bg-[rgba(255,255,255,0.03)] px-1 py-0.5 rounded border border-[rgba(255,255,255,0.05)]">
+                      {line}
+                  </span>
+              ))}
+          </div>
+      );
+  };
 
   const importDevices = async (e) => {
       const file = e.target.files[0];
@@ -849,48 +919,135 @@ export default function DevicesPage() {
                          </label>
                      </div>
 
-                     <h4 className="text-sm font-semibold mb-2">Proposed Devices Preview</h4>
-                     <div style={{ background: 'rgba(0,0,0,0.3)', padding: '12px', borderRadius: 'var(--radius-sm)', marginBottom: '16px' }}>
-                        <table className="w-full text-sm text-left">
-                            <thead>
-                                <tr className="text-[var(--text-secondary)] border-b border-[var(--border)]">
-                                    <th className="pb-2">Physical Addr</th>
-                                    <th className="pb-2">Logical Name</th>
-                                    <th className="pb-2">Room</th>
-                                    <th className="pb-2">Type</th>
-                                    <th className="pb-2">Status</th>
-                                    <th className="pb-2">Confidence</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                 {importReview.devices.length === 0 ? (
-                                     <tr>
-                                         <td colSpan="6" className="py-4 text-center text-[var(--text-secondary)]">
-                                             Không có thiết bị logic nào được đề xuất bóc tách.
-                                         </td>
-                                     </tr>
-                                 ) : (
-                                     importReview.devices.map((d, i) => (
-                                         <tr key={i} className="border-b border-[var(--border)] hover:bg-[rgba(255,255,255,0.02)]">
-                                             <td className="py-2 text-[var(--accent)] font-mono">{d.source.physical_address}</td>
-                                             <td className="py-2 font-medium">{d.name}</td>
-                                             <td className="py-2">{d.room}</td>
-                                             <td className="py-2"><span className="px-2 py-0.5 rounded text-xs" style={{ background: 'rgba(255,255,255,0.08)' }}>{d.type}</span></td>
-                                             <td className="py-2">
-                                                 <span className="px-2 py-0.5 rounded text-xs font-semibold" style={{
-                                                     background: d.status === 'ready' ? 'rgba(16, 185, 129, 0.2)' : (d.status === 'needs_review' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(239, 68, 68, 0.2)'),
-                                                     color: d.status === 'ready' ? 'var(--success)' : (d.status === 'needs_review' ? 'var(--warning)' : 'var(--danger)')
-                                                 }}>
-                                                     {d.status}
-                                                 </span>
-                                             </td>
-                                             <td className="py-2 font-mono">{(d.confidence * 100).toFixed(0)}%</td>
-                                         </tr>
-                                     ))
-                                 )}
-                             </tbody>
-                        </table>
-                     </div>
+                     {(() => {
+                          const groupedDevices = {};
+                          (importReview.devices || []).forEach(d => {
+                              const physAddr = d.source?.physical_address || 'unknown';
+                              if (!groupedDevices[physAddr]) {
+                                  groupedDevices[physAddr] = {
+                                      physical_address: physAddr,
+                                      ets_device_name: d.source?.ets_device_name || d.name,
+                                      manufacturer: d.source?.manufacturer || '',
+                                      product: d.source?.product || '',
+                                      channels: []
+                                  };
+                              }
+                              groupedDevices[physAddr].channels.push(d);
+                          });
+                          const groupedList = Object.values(groupedDevices);
+
+                          return (
+                              <>
+                                  <div className="mb-2 flex flex-col md:flex-row md:justify-between md:items-center gap-2">
+                                      <h4 className="text-sm font-semibold text-white">Physical Devices Preview</h4>
+                                      <span className="text-xs text-[var(--text-secondary)] italic">
+                                          💡 Một thiết bị vật lý KNX có thể có nhiều ngõ ra (Logical Channel). Mỗi ngõ ra sẽ được import thành một thiết bị riêng để điều khiển.
+                                      </span>
+                                  </div>
+                                  <div className="space-y-4 mb-6 custom-scrollbar" style={{ maxHeight: '40vh', overflowY: 'auto', paddingRight: '4px' }}>
+                                      {importReview.devices.length === 0 ? (
+                                          <div className="p-8 text-center bg-[rgba(0,0,0,0.2)] rounded border border-[var(--border)] text-[var(--text-secondary)]">
+                                              Không có thiết bị logic nào được đề xuất bóc tách.
+                                          </div>
+                                      ) : (
+                                          groupedList.map((group, gIdx) => {
+                                              const expanded = isGroupExpanded(group.physical_address);
+                                              const metaLabel = [group.manufacturer, group.product].filter(Boolean).join(' / ');
+
+                                              return (
+                                                  <div key={gIdx} className="border border-[var(--border)] rounded overflow-hidden bg-[rgba(0,0,0,0.15)]">
+                                                      {/* Group Header */}
+                                                      <div
+                                                          onClick={() => toggleGroup(group.physical_address)}
+                                                          className="p-3 bg-[rgba(255,255,255,0.02)] hover:bg-[rgba(255,255,255,0.05)] cursor-pointer flex justify-between items-center transition-colors"
+                                                      >
+                                                          <div>
+                                                              <strong className="text-[var(--accent)] font-mono text-sm">{group.physical_address}</strong>
+                                                              <span className="ml-2 font-medium text-sm text-white">{group.ets_device_name || 'Unknown Device'}</span>
+                                                              {metaLabel && (
+                                                                  <span className="ml-3 text-xs text-[var(--text-secondary)] bg-[rgba(255,255,255,0.05)] px-2 py-0.5 rounded">
+                                                                      {metaLabel}
+                                                                  </span>
+                                                              )}
+                                                          </div>
+                                                          <div className="flex items-center gap-3">
+                                                              <span className="text-xs bg-[rgba(16,185,129,0.1)] text-[var(--success)] border border-[rgba(16,185,129,0.2)] px-2 py-0.5 rounded-full font-semibold">
+                                                                  {group.channels.length} controllable {group.channels.length === 1 ? 'output' : 'outputs'}
+                                                              </span>
+                                                              <span className="text-[var(--text-secondary)] text-xs select-none">
+                                                                  {expanded ? '▲ Hide' : '▼ Expand'}
+                                                              </span>
+                                                          </div>
+                                                      </div>
+
+                                                      {/* Channels List */}
+                                                      {expanded && (
+                                                          <div className="p-3 border-t border-[var(--border)] bg-black/10">
+                                                              <table className="w-full text-xs text-left">
+                                                                  <thead>
+                                                                      <tr className="text-[var(--text-secondary)] border-b border-[var(--border)]/50 pb-1">
+                                                                          <th className="pb-1 w-24">Logical Channel</th>
+                                                                          <th className="pb-1 w-48">Logical Name</th>
+                                                                          <th className="pb-1 w-24">Room</th>
+                                                                          <th className="pb-1 w-20">Type</th>
+                                                                          <th className="pb-1 w-24">Status</th>
+                                                                          <th className="pb-1 w-16 text-right">Confidence</th>
+                                                                      </tr>
+                                                                  </thead>
+                                                                  <tbody>
+                                                                      {group.channels.map((d, cIdx) => (
+                                                                          <tr key={cIdx} className="border-b border-[var(--border)]/30 hover:bg-[rgba(255,255,255,0.01)] last:border-none">
+                                                                              <td className="py-2 text-[var(--accent)] font-mono font-medium">
+                                                                                  {d.source.channel || 'MAIN'}
+                                                                              </td>
+                                                                              <td className="py-2">
+                                                                                  <div className="font-medium text-white">{d.name}</div>
+                                                                                  {renderGAs(d)}
+                                                                              </td>
+                                                                              <td className="py-2 text-[var(--text-secondary)]">{d.room}</td>
+                                                                              <td className="py-2">
+                                                                                  <span className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-[10px] uppercase font-mono">
+                                                                                      {d.type}
+                                                                                  </span>
+                                                                              </td>
+                                                                              <td className="py-2">
+                                                                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase" style={{
+                                                                                      background: d.status === 'ready' ? 'rgba(16, 185, 129, 0.15)' : (d.status === 'needs_review' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(239, 68, 68, 0.15)'),
+                                                                                      color: d.status === 'ready' ? 'var(--success)' : (d.status === 'needs_review' ? 'var(--warning)' : 'var(--danger)')
+                                                                                  }}>
+                                                                                      {d.status}
+                                                                                  </span>
+                                                                              </td>
+                                                                              <td className="py-2 font-mono text-right">{(d.confidence * 100).toFixed(0)}%</td>
+                                                                          </tr>
+                                                                      ))}
+                                                                  </tbody>
+                                                              </table>
+                                                          </div>
+                                                      )}
+                                                  </div>
+                                              );
+                                          })
+                                      )}
+                                  </div>
+                              </>
+                          );
+                      })()}
+
+                      {importReview.unmapped && importReview.unmapped.length > 0 && (
+                          <div className="mb-4">
+                              <h4 className="text-sm font-semibold mb-2">Group Addresses chưa ánh xạ ({importReview.unmapped.length})</h4>
+                              <div style={{ background: 'rgba(0,0,0,0.2)', padding: '12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                                  <div className="text-xs font-mono text-[var(--text-secondary)] flex flex-wrap gap-2 max-h-[150px] overflow-y-auto custom-scrollbar">
+                                      {importReview.unmapped.map((ga, idx) => (
+                                          <span key={idx} className="bg-[rgba(255,255,255,0.05)] px-2 py-0.5 rounded border border-[var(--border)]">
+                                              {ga}
+                                          </span>
+                                      ))}
+                                  </div>
+                              </div>
+                          </div>
+                      )}
 
                      {importReview.consoleOutput && (
                          <div className="mb-4">

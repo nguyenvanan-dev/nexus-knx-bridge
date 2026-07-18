@@ -6,8 +6,18 @@ const BACKEND_URL = process.env.BACKEND_URL || 'http://127.0.0.1:5055';
 export async function POST(req) {
     const token = (await cookies()).get('knx_token')?.value;
     const authHeaders = token ? { 'Authorization': `Bearer ${token}` } : {};
+
+    let formData;
     try {
-        const formData = await req.formData();
+        formData = await req.formData();
+    } catch (e) {
+        return NextResponse.json({
+            status: 'error',
+            message: "Failed to parse upload body. File may exceed frontend upload limit or request was truncated."
+        }, { status: 400 });
+    }
+
+    try {
         const res = await fetch(`${BACKEND_URL}/api/knxproj/parse`, {
             method: 'POST',
             headers: authHeaders,
