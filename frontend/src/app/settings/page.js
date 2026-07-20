@@ -8,23 +8,23 @@ export default function SettingsPage() {
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [restarting, setRestarting] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
-  
+
   // User Management state
   const [users, setUsers] = useState([]);
   const [newUser, setNewUser] = useState({ username: '', password: '', role: 'Member' });
   const [loadingUsers, setLoadingUsers] = useState(false);
-  
+
   // Config Manager state
   const [configs, setConfigs] = useState([]);
   const [loadingConfigs, setLoadingConfigs] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
-  
+
   // Restore state
   const [restoring, setRestoring] = useState(false);
-  
+
   // Tab State
   const [activeTab, setActiveTab] = useState('system'); // 'system', 'users', 'config'
-  
+
   const fetchLogs = async () => {
     setLoadingLogs(true);
     try {
@@ -171,16 +171,16 @@ export default function SettingsPage() {
           showDialog("Invalid File", "Please upload a .zip file", "warning");
           return;
       }
-      
+
       showDialog(
-          "Restore System", 
-          "This will overwrite the current database and configuration. The system will restart. Proceed?", 
-          "danger", 
+          "Restore System",
+          "This will overwrite the current database and configuration. The system will restart. Proceed?",
+          "danger",
           async () => {
               setRestoring(true);
               const formData = new FormData();
               formData.append('file', file);
-              
+
               try {
                   const res = await fetch('/api/system/restore', {
                       method: 'POST',
@@ -203,18 +203,16 @@ export default function SettingsPage() {
       );
   };
 
-  /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
   useEffect(() => {
     fetchLogs();
     fetchUser();
   }, [logService]);
-  /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 
   const handleRestart = async (serviceName) => {
     showDialog(
-        "Restart Service", 
-        `Are you sure you want to restart ${serviceName}?`, 
-        "warning", 
+        "Restart Service",
+        `Are you sure you want to restart ${serviceName}?`,
+        "warning",
         async () => {
             setRestarting(true);
             try {
@@ -244,35 +242,48 @@ export default function SettingsPage() {
 
   return (
     <div className="page-container animate-fade-in flex flex-col h-full max-h-full">
-      <header className="mb-8 shrink-0">
-        <h2 className="text-2xl font-semibold mb-1 text-[var(--text-primary)]">System Settings & Administration</h2>
-        <p className="text-sm text-[var(--text-secondary)]">Quản lý tiến trình, Backup dữ liệu, User và xem Logs</p>
+      <header className="shrink-0" style={{ marginBottom: '16px' }}>
+        <h2 className="text-[26px] font-bold text-[var(--text-primary)]">System Settings & Administration</h2>
       </header>
 
-      {/* Tabs Navigation */}
-      <div className="flex gap-3 mb-10 shrink-0 overflow-x-auto custom-scrollbar pb-2">
-        <button 
-            className={`px-5 py-2.5 rounded-full font-medium transition-all whitespace-nowrap flex items-center gap-2 ${activeTab === 'system' ? 'bg-[var(--accent)] text-white shadow-lg' : 'bg-[rgba(255,255,255,0.05)] text-[var(--text-secondary)] hover:bg-[rgba(255,255,255,0.1)] hover:text-white'}`}
-            onClick={() => setActiveTab('system')}
-        >
-            General System
-        </button>
-        {currentUser?.role === 'Admin' && (
-            <>
-                <button 
-                    className={`px-5 py-2.5 rounded-full font-medium transition-all whitespace-nowrap flex items-center gap-2 ${activeTab === 'users' ? 'bg-[var(--accent)] text-white shadow-lg' : 'bg-[rgba(255,255,255,0.05)] text-[var(--text-secondary)] hover:bg-[rgba(255,255,255,0.1)] hover:text-white'}`}
-                    onClick={() => setActiveTab('users')}
-                >
-                    User Management
-                </button>
-                <button 
-                    className={`px-5 py-2.5 rounded-full font-medium transition-all whitespace-nowrap flex items-center gap-2 ${activeTab === 'config' ? 'bg-[var(--accent)] text-white shadow-lg' : 'bg-[rgba(255,255,255,0.05)] text-[var(--text-secondary)] hover:bg-[rgba(255,255,255,0.1)] hover:text-white'}`}
-                    onClick={() => setActiveTab('config')}
-                >
-                    System Config
-                </button>
-            </>
-        )}
+      {/* Tabs Navigation (Standalone Boxes) */}
+      <div className="shrink-0 overflow-x-auto custom-scrollbar pb-1" style={{ marginBottom: '8px' }}>
+        <div className="flex gap-3" style={{ minWidth: 'max-content' }}>
+          <button
+              className={`px-[18px] py-[10px] rounded-[9px] text-[15px] font-semibold transition-all whitespace-nowrap border ${
+                activeTab === 'system'
+                  ? 'bg-[var(--accent)] border-[var(--accent)] text-white shadow-sm'
+                  : 'bg-white/[0.02] border-white/[0.08] text-white/60 hover:bg-white/[0.06] hover:text-white'
+              }`}
+              onClick={() => setActiveTab('system')}
+          >
+              General System
+          </button>
+          {currentUser?.role === 'Admin' && (
+              <>
+                  <button
+                      className={`px-[18px] py-[10px] rounded-[9px] text-[15px] font-semibold transition-all whitespace-nowrap border ${
+                        activeTab === 'users'
+                          ? 'bg-[var(--accent)] border-[var(--accent)] text-white shadow-sm'
+                          : 'bg-white/[0.02] border-white/[0.08] text-white/60 hover:bg-white/[0.06] hover:text-white'
+                      }`}
+                      onClick={() => setActiveTab('users')}
+                  >
+                      User Management
+                  </button>
+                  <button
+                      className={`px-[18px] py-[10px] rounded-[9px] text-[15px] font-semibold transition-all whitespace-nowrap border ${
+                        activeTab === 'config'
+                          ? 'bg-[var(--accent)] border-[var(--accent)] text-white shadow-sm'
+                          : 'bg-white/[0.02] border-white/[0.08] text-white/60 hover:bg-white/[0.06] hover:text-white'
+                      }`}
+                      onClick={() => setActiveTab('config')}
+                  >
+                      System Config
+                  </button>
+              </>
+          )}
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto custom-scrollbar pb-6 flex flex-col">
@@ -282,17 +293,17 @@ export default function SettingsPage() {
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     {/* Backup & Restore Panel */}
                     <div className="glass-panel p-6">
-          <h3 style={{ fontSize: '1.1rem', marginBottom: '16px', color: '#10b981' }}>Backup & Restore</h3>
+          <h3 style={{ fontSize: '1.1rem', marginBottom: '16px', color: 'var(--text-primary)', fontWeight: '600' }}>Backup & Restore</h3>
           <p style={{ color: 'var(--text-secondary)', marginBottom: '16px', fontSize: '0.9rem' }}>
             Tải về bản sao lưu an toàn bao gồm database (smarthome.db), cấu hình thiết bị và các biến môi trường (.env).
           </p>
           <div style={{ display: 'flex', gap: '12px' }}>
-            <button 
+            <button
               onClick={handleDownloadBackup}
-              style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontWeight: '500' }}>
+              style={{ background: 'var(--accent)', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontWeight: '500' }}>
               📥 Download System Backup (.zip)
             </button>
-            <label style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontWeight: '500', opacity: restoring ? 0.5 : 1 }}>
+            <label style={{ background: '#dc2626', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontWeight: '500', opacity: restoring ? 0.5 : 1 }}>
               {restoring ? '⏳ Restoring...' : '📤 Upload Restore (.zip)'}
               <input type="file" accept=".zip" onChange={handleRestore} style={{ display: 'none' }} disabled={restoring} />
             </label>
@@ -304,21 +315,38 @@ export default function SettingsPage() {
 
         {/* Service Management Panel */}
         <div className="glass-panel" style={{ padding: '20px' }}>
-          <h3 style={{ fontSize: '1.1rem', marginBottom: '16px', color: '#ef4444' }}>Service Management</h3>
+          <h3 style={{ fontSize: '1.1rem', marginBottom: '16px', color: 'var(--text-primary)', fontWeight: '600' }}>Service Management</h3>
           <p style={{ color: 'var(--text-secondary)', marginBottom: '16px', fontSize: '0.9rem' }}>
             Khởi động lại các tiến trình ngầm (systemctl services) khi gặp sự cố mà không cần dùng SSH.
           </p>
-          
+
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '6px' }}>
               <div>
                 <strong>knx-bridge</strong>
                 <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>FastAPI Backend Service (Port 5055)</div>
               </div>
-              <button 
+              <button
                 disabled={restarting}
                 onClick={() => handleRestart('knx-bridge')}
-                style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '6px 16px', borderRadius: '4px', cursor: 'pointer' }}>
+                className="px-4 py-1.5 rounded text-sm font-medium transition-all"
+                style={{
+                  background: 'rgba(255,255,255,0.05)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  color: 'rgba(255,255,255,0.8)',
+                  cursor: 'pointer'
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = '#dc2626';
+                  e.currentTarget.style.borderColor = '#dc2626';
+                  e.currentTarget.style.color = '#ffffff';
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)';
+                  e.currentTarget.style.color = 'rgba(255,255,255,0.8)';
+                }}
+              >
                 Restart
               </button>
             </div>
@@ -328,10 +356,27 @@ export default function SettingsPage() {
                 <strong>knx-frontend</strong>
                 <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Next.js Dashboard Service (Port 3000)</div>
               </div>
-              <button 
+              <button
                 disabled={restarting}
                 onClick={() => handleRestart('knx-frontend')}
-                style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '6px 16px', borderRadius: '4px', cursor: 'pointer' }}>
+                className="px-4 py-1.5 rounded text-sm font-medium transition-all"
+                style={{
+                  background: 'rgba(255,255,255,0.05)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  color: 'rgba(255,255,255,0.8)',
+                  cursor: 'pointer'
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = '#dc2626';
+                  e.currentTarget.style.borderColor = '#dc2626';
+                  e.currentTarget.style.color = '#ffffff';
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)';
+                  e.currentTarget.style.color = 'rgba(255,255,255,0.8)';
+                }}
+              >
                 Restart
               </button>
             </div>
@@ -340,10 +385,27 @@ export default function SettingsPage() {
                 <strong>ngrok / localtunnel</strong>
                 <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Public Tunnel Service</div>
               </div>
-              <button 
+              <button
                 disabled={restarting}
                 onClick={() => handleRestart('ngrok')}
-                style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '6px 16px', borderRadius: '4px', cursor: 'pointer' }}>
+                className="px-4 py-1.5 rounded text-sm font-medium transition-all"
+                style={{
+                  background: 'rgba(255,255,255,0.05)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  color: 'rgba(255,255,255,0.8)',
+                  cursor: 'pointer'
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = '#dc2626';
+                  e.currentTarget.style.borderColor = '#dc2626';
+                  e.currentTarget.style.color = '#ffffff';
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)';
+                  e.currentTarget.style.color = 'rgba(255,255,255,0.8)';
+                }}
+              >
                 Restart
               </button>
             </div>
@@ -353,10 +415,27 @@ export default function SettingsPage() {
                 <strong>openclaw</strong>
                 <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>AI Agent Background Worker</div>
               </div>
-              <button 
+              <button
                 disabled={restarting}
                 onClick={() => handleRestart('openclaw')}
-                style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '6px 16px', borderRadius: '4px', cursor: 'pointer' }}>
+                className="px-4 py-1.5 rounded text-sm font-medium transition-all"
+                style={{
+                  background: 'rgba(255,255,255,0.05)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  color: 'rgba(255,255,255,0.8)',
+                  cursor: 'pointer'
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = '#dc2626';
+                  e.currentTarget.style.borderColor = '#dc2626';
+                  e.currentTarget.style.color = '#ffffff';
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)';
+                  e.currentTarget.style.color = 'rgba(255,255,255,0.8)';
+                }}
+              >
                 Restart
               </button>
             </div>
@@ -365,11 +444,11 @@ export default function SettingsPage() {
           </div>
         </div>
         )}
-        
+
         {/* TAB 2: Users */}
         {activeTab === 'users' && currentUser?.role === 'Admin' && (
         <div className="glass-panel shrink-0" style={{ padding: '20px', marginBottom: '24px' }}>
-          <h3 style={{ fontSize: '1.1rem', marginBottom: '16px', color: '#a855f7' }}>User Management</h3>
+          <h3 style={{ fontSize: '1.1rem', marginBottom: '16px', color: 'var(--text-primary)', fontWeight: '600' }}>User Management</h3>
           <p style={{ color: 'var(--text-secondary)', marginBottom: '16px', fontSize: '0.9rem' }}>
             Quản lý tài khoản truy cập hệ thống.
           </p>
@@ -390,17 +469,18 @@ export default function SettingsPage() {
                                   <tr key={u.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                                       <td style={{ padding: '12px 0' }}>{u.username}</td>
                                       <td style={{ padding: '12px 0' }}>
-                                          <span style={{ 
-                                              background: u.role === 'Admin' ? 'rgba(168, 85, 247, 0.2)' : 'rgba(59, 130, 246, 0.2)',
-                                              color: u.role === 'Admin' ? '#c084fc' : '#60a5fa',
-                                              padding: '2px 8px', borderRadius: '12px', fontSize: '0.8rem'
+                                          <span style={{
+                                              background: 'rgba(255,255,255,0.08)',
+                                              color: 'rgba(255,255,255,0.8)',
+                                              padding: '2px 8px', borderRadius: '12px', fontSize: '0.8rem',
+                                              border: '1px solid rgba(255,255,255,0.15)'
                                           }}>
                                               {u.role}
                                           </span>
                                       </td>
                                       <td style={{ padding: '12px 0' }}>
                                           {currentUser.id !== u.id && (
-                                              <button onClick={() => handleDeleteUser(u.id)} style={{ background: 'transparent', color: '#ef4444', border: '1px solid #ef4444', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}>Delete</button>
+                                              <button onClick={() => handleDeleteUser(u.id)} style={{ background: 'transparent', color: '#dc2626', border: '1px solid #dc2626', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}>Delete</button>
                                           )}
                                       </td>
                                   </tr>
@@ -418,7 +498,7 @@ export default function SettingsPage() {
                           <option value="Member">Member</option>
                           <option value="Admin">Admin</option>
                       </select>
-                      <button type="submit" style={{ background: '#a855f7', color: 'white', border: 'none', padding: '10px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>Add User</button>
+                      <button type="submit" style={{ background: 'var(--accent)', color: 'white', border: 'none', padding: '10px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>Add User</button>
                   </form>
               </div>
           </div>
@@ -429,30 +509,30 @@ export default function SettingsPage() {
         <div className="glass-panel shrink-0" style={{ padding: '20px', marginBottom: '24px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <div>
-              <h3 style={{ fontSize: '1.1rem', color: '#10b981' }}>System Configuration (.env)</h3>
+              <h3 style={{ fontSize: '1.1rem', color: 'var(--text-primary)', fontWeight: '600' }}>System Configuration (.env)</h3>
               <p style={{ color: 'var(--text-secondary)', marginTop: '4px', fontSize: '0.9rem' }}>
                 Cập nhật các biến môi trường trực tiếp. Lưu ý: một số thay đổi yêu cầu khởi động lại Service để áp dụng.
               </p>
             </div>
-            <button 
+            <button
               onClick={handleUpdateConfig}
               disabled={savingConfig}
-              style={{ background: '#10b981', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+              style={{ background: 'var(--accent)', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
               {savingConfig ? 'Saving...' : 'Save Configuration'}
             </button>
           </div>
-          
+
           <div style={{ background: 'rgba(255,255,255,0.05)', padding: '16px', borderRadius: '8px' }}>
               {loadingConfigs ? <p>Loading configuration...</p> : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                       {configs.map((c, idx) => (
                           <div key={c.key} style={{ display: 'grid', gridTemplateColumns: '1fr 3fr', alignItems: 'center', gap: '16px', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '12px' }}>
                               <label style={{ color: '#e2e8f0', fontFamily: 'monospace', fontSize: '0.9rem' }}>{c.key}</label>
-                              <input 
-                                type="text" 
-                                value={c.value} 
+                              <input
+                                type="text"
+                                value={c.value}
                                 onChange={(e) => handleConfigChange(idx, e.target.value)}
-                                style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white', fontFamily: 'monospace' }} 
+                                style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white', fontFamily: 'monospace' }}
                               />
                           </div>
                       ))}
@@ -468,11 +548,11 @@ export default function SettingsPage() {
         */}
         <div className="glass-panel flex-1" style={{ padding: '20px', display: 'flex', flexDirection: 'column', marginTop: '24px', minHeight: '300px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <h3 style={{ fontSize: '1.1rem', color: '#f59e0b' }}>System Logs (journalctl)</h3>
-          
+          <h3 style={{ fontSize: '1.1rem', color: 'var(--text-primary)', fontWeight: '600' }}>System Logs (journalctl)</h3>
+
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-            <select 
-              value={logService} 
+            <select
+              value={logService}
               onChange={e => setLogService(e.target.value)}
               style={{ background: '#2d2d2d', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', padding: '4px 8px', borderRadius: '4px' }}>
               <option value="knx-bridge">knx-bridge (Backend)</option>
@@ -480,8 +560,8 @@ export default function SettingsPage() {
               <option value="ngrok">ngrok (Tunnel)</option>
               <option value="openclaw">openclaw (AI Agent)</option>
             </select>
-            
-            <button 
+
+            <button
               onClick={fetchLogs}
               disabled={loadingLogs}
               style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: 'none', padding: '4px 12px', borderRadius: '4px', cursor: 'pointer' }}>
@@ -490,16 +570,16 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        <textarea 
+        <textarea
           readOnly
           value={logs}
-          style={{ 
-            flex: 1, background: '#1e1e1e', color: '#d4d4d4', border: '1px solid rgba(255,255,255,0.1)', 
+          style={{
+            flex: 1, background: '#1e1e1e', color: '#d4d4d4', border: '1px solid rgba(255,255,255,0.1)',
             borderRadius: '6px', padding: '12px', fontFamily: 'monospace', fontSize: '0.85rem', resize: 'none'
           }}
         />
       </div>
-      
+
       </div> {/* End scrollable area */}
     </div>
   );
