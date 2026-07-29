@@ -3999,6 +3999,7 @@ async def setup_integrations(
             })
     return {
         "openclaw": openclaw_status,
+        "skill_credentials": openclaw_config_service.list_skill_credentials_safe(),
         "ai_provider_configs": openclaw_config_service.list_provider_configs_safe(),
         "ai_providers": sorted(
             provider_statuses.values(),
@@ -4055,6 +4056,35 @@ async def delete_ai_provider_config(
     if not deleted:
         raise HTTPException(status_code=404, detail="Provider không tồn tại.")
     return {"ok": True}
+
+
+@app.get("/api/setup/openclaw/skill-credentials")
+async def list_openclaw_skill_credentials(
+    setup_user: dict = Depends(require_setup_access),
+):
+    return {
+        "ok": True,
+        "credentials": openclaw_config_service.list_skill_credentials_safe(),
+    }
+
+
+@app.put("/api/setup/openclaw/skill-credentials/{skill_id}/{key}")
+async def update_openclaw_skill_credential(
+    skill_id: str,
+    key: str,
+    payload: dict,
+    setup_user: dict = Depends(require_setup_access),
+):
+    try:
+        credential = openclaw_config_service.update_skill_credential_safe(
+            skill_id=skill_id,
+            key=key,
+            value=payload.get("value", ""),
+            clear=bool(payload.get("clear", False)),
+        )
+        return {"ok": True, "credential": credential}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/setup/{category}")

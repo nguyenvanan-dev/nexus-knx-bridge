@@ -144,6 +144,18 @@ def test_openclaw_adapter(tmp_path):
     )
     with pytest.raises(ValueError, match="Provider ID"):
         oc_adapter.upsert_provider_config_safe(provider="../invalid")
+    skill_credential = oc_adapter.update_skill_credential_safe(
+        "goplaces", "apiKey", "skill-test-secret"
+    )
+    assert skill_credential["masked"].startswith("skil")
+    assert "skill-test-secret" not in json.dumps(skill_credential)
+    listed_skills = oc_adapter.list_skill_credentials_safe()
+    assert listed_skills[0]["skill_id"] == "goplaces"
+    assert "skill-test-secret" not in json.dumps(listed_skills)
+    with pytest.raises(ValueError, match="Tên credential"):
+        oc_adapter.update_skill_credential_safe(
+            "goplaces", "unsafe_setting", "value"
+        )
 
 
 def test_extended_setup_schema(tmp_path):

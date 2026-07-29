@@ -66,6 +66,11 @@ export default function SetupWizardPage() {
     model: '',
     base_url: ''
   });
+  const [skillCredential, setSkillCredential] = useState({
+    skill_id: '',
+    key: 'apiKey',
+    value: ''
+  });
 
   const [telegramForm, setTelegramForm] = useState({
     enabled: false,
@@ -254,6 +259,31 @@ export default function SetupWizardPage() {
       newProvider();
       await refreshIntegrations();
       showToast('Đã xóa provider', 'success');
+    } catch (error) {
+      showToast(error.message, 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveSkillCredential = async () => {
+    if (!skillCredential.skill_id.trim() || !skillCredential.key.trim() || !skillCredential.value) {
+      showToast('Nhập Skill ID, tên khóa và credential', 'warning');
+      return;
+    }
+    setSaving(true);
+    try {
+      const path = `/api/setup/openclaw/skill-credentials/${encodeURIComponent(skillCredential.skill_id.trim().toLowerCase())}/${encodeURIComponent(skillCredential.key.trim())}`;
+      const res = await fetch(path, {
+        method: 'PUT',
+        headers: setupHeaders(),
+        body: JSON.stringify({ value: skillCredential.value })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Không thể lưu skill credential');
+      setSkillCredential({ ...skillCredential, value: '' });
+      await refreshIntegrations();
+      showToast('Đã lưu credential cho skill', 'success');
     } catch (error) {
       showToast(error.message, 'error');
     } finally {
@@ -790,6 +820,40 @@ export default function SetupWizardPage() {
               <button type="button" onClick={refreshIntegrations} style={{ alignSelf: 'flex-start', padding: '0.55rem 1rem', background: '#334155', color: '#f8fafc', border: 0, borderRadius: '0.375rem', cursor: 'pointer' }}>
                 Làm mới trạng thái runtime
               </button>
+              <div style={{ borderTop: '1px solid #334155', paddingTop: '1rem' }}>
+                <h3 style={{ color: '#f1f5f9', fontSize: '1rem', marginBottom: '0.65rem' }}>Credential cho Skill / Plugin</h3>
+                {integrations?.skill_credentials?.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                    {integrations.skill_credentials.map(item => (
+                      <button key={`${item.skill_id}:${item.key}`} type="button" onClick={() => setSkillCredential({ skill_id: item.skill_id, key: item.key, value: '' })} style={{ padding: '0.55rem 0.7rem', background: '#172033', border: '1px solid #334155', borderRadius: '0.4rem', color: '#e2e8f0', cursor: 'pointer', textAlign: 'left' }}>
+                        <strong>{item.skill_id}</strong> · {item.key}
+                        <span style={{ display: 'block', color: '#94a3b8', fontFamily: 'monospace', marginTop: '0.2rem' }}>{item.masked}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 2fr auto', gap: '0.6rem', alignItems: 'end' }}>
+                  <div>
+                    <label style={{ display: 'block', color: '#94a3b8', fontSize: '0.82rem', marginBottom: '0.25rem' }}>Skill ID</label>
+                    <input value={skillCredential.skill_id} onChange={e => setSkillCredential({ ...skillCredential, skill_id: e.target.value })} placeholder="goplaces" style={{ width: '100%', padding: '0.6rem', background: '#1e293b', border: '1px solid #334155', borderRadius: '0.375rem', color: '#f8fafc' }} />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', color: '#94a3b8', fontSize: '0.82rem', marginBottom: '0.25rem' }}>Tên khóa</label>
+                    <select value={skillCredential.key} onChange={e => setSkillCredential({ ...skillCredential, key: e.target.value })} style={{ width: '100%', padding: '0.6rem', background: '#1e293b', border: '1px solid #334155', borderRadius: '0.375rem', color: '#f8fafc' }}>
+                      <option value="apiKey">apiKey</option>
+                      <option value="token">token</option>
+                      <option value="access_token">access_token</option>
+                      <option value="client_secret">client_secret</option>
+                      <option value="webhook_secret">webhook_secret</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', color: '#94a3b8', fontSize: '0.82rem', marginBottom: '0.25rem' }}>Credential mới</label>
+                    <input type="password" value={skillCredential.value} onChange={e => setSkillCredential({ ...skillCredential, value: e.target.value })} placeholder="Để trống nếu không thay đổi" style={{ width: '100%', padding: '0.6rem', background: '#1e293b', border: '1px solid #334155', borderRadius: '0.375rem', color: '#f8fafc' }} />
+                  </div>
+                  <button type="button" onClick={saveSkillCredential} disabled={saving} style={{ padding: '0.62rem 0.9rem', background: '#0891b2', border: 0, borderRadius: '0.375rem', color: '#fff', cursor: 'pointer' }}>Lưu key</button>
+                </div>
+              </div>
             </div>
           </div>
         )}

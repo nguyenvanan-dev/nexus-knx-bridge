@@ -398,6 +398,67 @@ class OpenClawConfigService:
         self._atomic_write_config(config)
         return True
 
+    @staticmethod
+    def _credential_key(value: str) -> str:
+        key = str(value or "").strip()
+        if not re.fullmatch(
+            r"(?i)(api[_-]?key|token|access[_-]?token|client[_-]?secret|webhook[_-]?secret)",
+            key,
+        ):
+            raise ValueError(
+                "Tên credential chỉ được là apiKey, api_key, token, access_token, client_secret hoặc webhook_secret."
+            )
+        return key
+
+    def list_skill_credentials_safe(self) -> list:
+        config = self._load_config()
+        entries = config.get("skills", {}).get("entries", {})
+        if not isinstance(entries, dict):
+            return []
+        result = []
+        for skill_id, details in sorted(entries.items()):
+            if not isinstance(details, dict):
+                continue
+            for key, value in sorted(details.items()):
+                try:
+                    self._credential_key(key)
+                except ValueError:
+                    continue
+                result.append({
+                    "skill_id": skill_id,
+                    "key": key,
+                    "source": "~/.openclaw/openclaw.json",
+                    **self._credential_identity(value),
+                })
+        return result
+
+    def update_skill_credential_safe(
+        self,
+        skill_id: str,
+        key: str,
+        value: str = "",
+        clear: bool = False,
+    ) -> Dict[str, Any]:
+        skill_id = self._provider_slug(skill_id)
+        key = self._credential_key(key)
+        config = self._load_config()
+        entries = config.setdefault("skills", {}).setdefault("entries", {})
+        target = entries.setdefault(skill_id, {})
+        if clear:
+            target.pop(key, None)
+        elif value:
+            target[key] = str(value).strip()
+        else:
+            raise ValueError("Credential không được để trống.")
+        self._atomic_write_config(config)
+        identity = self._credential_identity(target.get(key))
+        return {
+            "skill_id": skill_id,
+            "key": key,
+            "source": "~/.openclaw/openclaw.json",
+            **identity,
+        }
+
     def _atomic_write_config(self, config: Dict[str, Any]) -> None:
         fd, temp_path = tempfile.mkstemp(
             dir=str(self.openclaw_dir), prefix=".openclaw_", suffix=".tmp"
