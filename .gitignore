@@ -26,6 +26,7 @@ tmp_knxproj/
 # Secrets / credentials
 .env
 .env.*
+!.env.example
 credentials/
 all_api_keys_backup.txt
 *_api_keys_backup*

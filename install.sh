@@ -52,10 +52,12 @@ if [ ! -f "$PROJECT_DIR/.env" ]; then
     umask 077
     JWT_SECRET_KEY=$(openssl rand -hex 32)
     KNX_API_TOKEN=$(openssl rand -hex 32)
+    API_KEY=$(openssl rand -hex 32)
     SETUP_BOOTSTRAP_TOKEN=$(openssl rand -hex 24)
     cat > "$PROJECT_DIR/.env" << ENV_EOF
 JWT_SECRET_KEY=$JWT_SECRET_KEY
 KNX_API_TOKEN=$KNX_API_TOKEN
+API_KEY=$API_KEY
 SETUP_BOOTSTRAP_TOKEN=$SETUP_BOOTSTRAP_TOKEN
 BACKEND_URL=http://127.0.0.1:5055
 KNX_GATEWAY_IP=127.0.0.1

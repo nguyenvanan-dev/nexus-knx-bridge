@@ -1,6 +1,6 @@
-# KNX Bridge
+# NEXUS KNX Bridge
 
-KNX Bridge is a self-hosted smart-home control platform for Raspberry Pi. It
+NEXUS KNX Bridge is a self-hosted smart-home control platform for Raspberry Pi. It
 combines a FastAPI backend, a Next.js administration UI, SQLite device
 registry, ETS `.knxproj` import, OpenClaw skills, and Telegram/Zalo adapters.
 
@@ -22,8 +22,8 @@ live Telegram/Zalo delivery remain owner-operated acceptance tests.
 ## Install
 
 ```bash
-git clone <PRIVATE_REPOSITORY_URL> knx-bridge
-cd knx-bridge
+git clone https://github.com/<your-github-username>/nexus-knx-bridge.git
+cd nexus-knx-bridge
 ./install.sh --check-only
 ./install.sh
 systemctl --user enable --now knx-bridge.service knx-frontend.service
@@ -77,5 +77,4 @@ production database.
 
 ## License
 
-This repository is currently private and distributed under the terms in
-[LICENSE](LICENSE).
+Released under the [MIT License](LICENSE).

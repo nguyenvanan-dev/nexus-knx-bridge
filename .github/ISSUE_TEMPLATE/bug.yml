@@ -1,0 +1,38 @@
+name: Bug report
+description: Report a reproducible software problem
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include secrets, databases, pairing data, or private KNX project files.
+  - type: textarea
+    id: description
+    attributes:
+      label: Problem
+      description: What happened and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+    validations:
+      required: true
+  - type: dropdown
+    id: hardware
+    attributes:
+      label: Hardware side effects involved?
+      options:
+        - No
+        - KNX read only
+        - KNX write
+        - Telegram or Zalo delivery
+    validations:
+      required: true
