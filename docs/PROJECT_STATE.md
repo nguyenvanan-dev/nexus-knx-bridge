@@ -23,7 +23,7 @@ Future AI sessions must always read this document first. If conflicts arise betw
 - **Repository:** `/home/an/knx-bridge`
 - **Current Sprint:** Sprint E3.3 (Current)
 - **Multi-Light Control Enablement**:
-  - Dọn sạch rác `bulk_light_*` và `test_light*` khỏi `devices.json` và `smarthome.db`.
+  - Dọn sạch rác `bulk_light_*` và `test_light*` khỏi `SQLite device registry` và `smarthome.db`.
   - Áp dụng Safety Gate: Backend API `/light` sử dụng allowlist cứng chỉ cho phép điều khiển physical lights (`den_led_day`, `den_tron`, `den_d`, `den_e`, `den_f`, `den_g`, `den_h`, `g1_den_tran`).
   - Frontend chỉ filter và render các thiết bị physical light (`type === 'light'` && `onoff_ga`).
 
@@ -82,7 +82,7 @@ KNX Bus
 The immediate next goal is to unlock all other Light devices for physical control, ensuring their KNX addresses are correctly mapped and responsive.
 
 ### Remaining Tasks for E3.3:
-1. Audit all light devices in `devices.json`
+1. Audit all light devices in `SQLite device registry`
 2. Verify KNX group address mapping
 3. Remove temporary `den_led_day` safety lock
 4. Test ON/OFF for every light device

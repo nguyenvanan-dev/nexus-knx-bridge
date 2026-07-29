@@ -5,7 +5,7 @@ description: Quản lý kịch bản (Scene) của nhà thông minh. Dùng skill
 # Scene Manager Skill
 
 ## Mô tả
-Skill này cho phép bạn quản lý các kịch bản (scenes) của hệ thống nhà thông minh. Các kịch bản được lưu trữ trong file `/home/an/knx-bridge/scenes.json`.
+Skill này cho phép bạn quản lý các kịch bản (scenes) của hệ thống nhà thông minh. Các kịch bản được lưu trong các bảng `scenes` và `scene_actions` của SQLite `smarthome.db`.
 
 ## Cách sử dụng
 

@@ -7,7 +7,7 @@
 
 ## 2. Component Architecture
 - **FastAPI:** Core REST API bridging commands to the KNX bus (`127.0.0.1:5055`).
-- **KNX Tunnel:** Connection to IP `10.1.10.137:3671` via `xknx`.
+- **KNX Tunnel:** Connection to the gateway configured at runtime via `xknx`.
 - **OpenClaw Gateway:** AI orchestrator processing natural language and translating to API calls.
 - **Messaging Adapters:** Telegram (native to OpenClaw) and Zalo (webhook).
 - **Background Workers:**
@@ -29,11 +29,11 @@ Key Tables:
 ## 4. Identity & Authorization Architecture
 **STRICT RULE:** Authorization happens BEFORE AI execution.
 - **RBAC Policy:** Handled purely by OpenClaw configuration (`~/.openclaw/openclaw.json`).
-- **`ownerAllowFrom`:** Contains immutable IDs (Telegram: `1504699142`, Zalo: `a883cba5f1ed18b341fc`).
+- **`ownerAllowFrom`:** Contains administrator-configured Telegram and Zalo user IDs.
 - **Gateway Evaluation:** Gateway checks sender ID against `ownerAllowFrom` and assigns `role: owner` or `guest`.
 - **AI Context Enforcement:** AI relies on the `role` metadata provided by the Gateway. The AI is **NOT** the authorization authority.
 
 ## 5. File Configuration
 - **`~/.openclaw/openclaw.json`:** OpenClaw routing, tokens, models, RBAC (`ownerAllowFrom`).
 - **`knx-bridge/.env`:** Backend tokens (`KNX_API_TOKEN`) and secrets.
-- **`devices.json`:** Group Address to component mappings.
+- **`smarthome.db`:** Canonical device, Group Address, scene, and runtime configuration storage.
