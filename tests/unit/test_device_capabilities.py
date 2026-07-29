@@ -42,6 +42,7 @@ conn.commit()
 conn.close()
 
 import app
+sqlite3.connect = original_connect
 from core.device_registry import DeviceRegistry, Device
 
 def test_registry_capabilities_parsing_and_indexing(tmp_path):

@@ -24,7 +24,7 @@ def main():
         print("Lỗi: Thiếu tham số 'action'.")
         return
 
-    store = MemoryStore("/home/an/knx-bridge/data/agent_memory.sqlite3")
+    store = MemoryStore()
 
     if action == "search":
         query = args.get("query", "")

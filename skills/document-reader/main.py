@@ -59,7 +59,7 @@ def main():
         # Save to local memory on success
         if MemoryStore and result.returncode == 0:
             try:
-                store = MemoryStore("/home/an/knx-bridge/data/agent_memory.sqlite3")
+                store = MemoryStore()
                 store.add_memory(
                     wing="System",
                     hall="documents",

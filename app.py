@@ -139,6 +139,7 @@ def init_smarthome_db():
 
 init_db()
 init_smarthome_db()
+auth_utils.ensure_auth_schema(BASE_DIR / "smarthome.db")
 
 KNX_GATEWAY_IP = os.getenv("KNX_GATEWAY_IP", "10.1.10.137")
 KNX_GATEWAY_PORT = int(os.getenv("KNX_GATEWAY_PORT", "3671"))

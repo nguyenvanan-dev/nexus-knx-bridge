@@ -1,11 +1,25 @@
 import sqlite3
 import os
 from datetime import datetime
+from pathlib import Path
 from typing import List, Dict, Any, Optional
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_MEMORY_DB = PROJECT_ROOT / "data" / "agent_memory.sqlite3"
+
+
+def resolve_memory_db_path(db_path=None) -> Path:
+    configured = db_path or os.getenv("AGENT_MEMORY_DB")
+    if not configured:
+        return DEFAULT_MEMORY_DB
+
+    path = Path(configured).expanduser()
+    return path if path.is_absolute() else PROJECT_ROOT / path
+
+
 class MemoryStore:
-    def __init__(self, db_path: str = "data/agent_memory.sqlite3"):
-        self.db_path = db_path
+    def __init__(self, db_path=None):
+        self.db_path = str(resolve_memory_db_path(db_path))
         self._init_db()
 
     def _init_db(self):
@@ -64,6 +78,7 @@ class MemoryStore:
         
         conn.commit()
         conn.close()
+        os.chmod(self.db_path, 0o600)
 
     def add_memory(self, **kwargs) -> int:
         conn = sqlite3.connect(self.db_path)

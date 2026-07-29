@@ -138,13 +138,25 @@ class HealthService:
                     "status": "No Data"
                 })
 
-        # Recent Logs (Read using tail)
+        # Prefer the configured service log; fall back to systemd journal.
         recent_logs = []
+        log_path = os.getenv("KNX_BACKEND_LOG", "/var/log/knx-bridge.log")
         try:
-            tail_output = subprocess.check_output(["tail", "-n", "20", "backend.log"], stderr=subprocess.DEVNULL)
-            recent_logs = tail_output.decode('utf-8').splitlines()
+            tail_output = subprocess.check_output(
+                ["tail", "-n", "20", log_path],
+                stderr=subprocess.DEVNULL,
+            )
+            recent_logs = tail_output.decode("utf-8").splitlines()
         except Exception:
-            recent_logs = ["Log file backend.log not found or empty."]
+            try:
+                journal_output = subprocess.check_output(
+                    ["journalctl", "-u", "knx-bridge.service", "-n", "20",
+                     "--no-pager", "-o", "cat"],
+                    stderr=subprocess.DEVNULL,
+                )
+                recent_logs = journal_output.decode("utf-8").splitlines()
+            except Exception:
+                recent_logs = ["Backend service logs are unavailable."]
 
         knx_status = self._get_knx_status()
 
