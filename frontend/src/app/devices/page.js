@@ -732,12 +732,11 @@ export default function DevicesPage() {
 
   return (
     <div className="page-container animate-fade-in flex flex-col h-full max-h-full">
-      <header className="flex justify-between items-center mb-8">
+      <header className="flex flex-col sm:flex-row gap-4 justify-between sm:items-center" style={{ marginBottom: '20px' }}>
         <div>
-          <h2 className="text-2xl font-semibold mb-1 text-[var(--text-primary)]">Device Management</h2>
-          <p className="text-sm text-[var(--text-secondary)]">Quản lý {Object.keys(devices).length} thiết bị KNX</p>
+          <h2 className="text-2xl font-semibold text-[var(--text-primary)]">Device Management</h2>
         </div>
-        <div className="flex gap-4">
+        <div className="flex flex-wrap gap-3">
           <input type="file" id="import-file" className="hidden" accept=".json,.csv,.knxproj" onChange={importDevices} disabled={importPhase !== null || isSaving} />
           <button className="btn-secondary" onClick={() => document.getElementById('import-file').click()} disabled={importPhase !== null || isSaving}>
             📥 Import
@@ -762,17 +761,22 @@ export default function DevicesPage() {
           <p className="text-[var(--text-secondary)]">Import an ETS project or add a device manually to get started.</p>
         </div>
       ) : (
-        <div className="flex flex-col gap-4 flex-1 overflow-hidden" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-          {/* Filters */}
-          <div className="flex gap-4 mb-2">
-            <input
-              type="text"
-              placeholder="Search devices..."
-              className="input-primary"
-              style={{ maxWidth: '300px' }}
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-            />
+        <div className="flex flex-col flex-1 overflow-hidden" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+          {/* Stats and Search Row */}
+          <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4" style={{ marginBottom: '10px' }}>
+            <div className="text-[14px] text-white/50 font-medium">
+              <span className="text-[var(--text-primary)] font-semibold">{Object.keys(devices).length}</span> devices total
+            </div>
+            <div className="w-full sm:w-[320px]">
+              <input
+                type="text"
+                placeholder="Search devices..."
+                className="input-primary w-full"
+                style={{ height: '44px' }}
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+              />
+            </div>
           </div>
 
           <div className="glass-panel overflow-hidden flex-1 flex flex-col" style={{ padding: '0', borderRadius: '16px', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
