@@ -22,7 +22,7 @@ live Telegram/Zalo delivery remain owner-operated acceptance tests.
 ## Install
 
 ```bash
-git clone https://github.com/<your-github-username>/nexus-knx-bridge.git
+git clone https://github.com/nguyenvanan-dev/nexus-knx-bridge.git
 cd nexus-knx-bridge
 ./install.sh --check-only
 ./install.sh
