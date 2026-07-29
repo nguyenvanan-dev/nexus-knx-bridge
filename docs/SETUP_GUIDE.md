@@ -14,8 +14,16 @@ Tài liệu hướng dẫn cài đặt, cấu hình và vận hành hệ thống
 ## 2. Cài Đặt Tự Động (Automated Installation)
 Thực thi script installer đi kèm repository:
 ```bash
+# Chỉ kiểm tra yêu cầu, không thay đổi hệ thống
+./install.sh --check-only
+
+# Cài đặt
 ./install.sh
 ```
+
+Nếu đây là lần cài đầu tiên, installer tạo `.env` với quyền `0600` và ba
+khóa ngẫu nhiên phục vụ JWT, API nội bộ và bootstrap setup. Các khóa này chỉ
+nằm trên máy cài đặt, không được đưa vào Git.
 
 Kiểm tra trạng thái sau cài đặt:
 ```bash
@@ -26,17 +34,26 @@ Kiểm tra trạng thái sau cài đặt:
 Truy cập giao diện Web UI qua trình duyệt:
 `http://<IP_RASPBERRY_PI>:3000/setup`
 
+Sau khi đăng nhập, Setup Wizard cũng có thể mở từ:
+`Settings & System -> Integration Setup`.
+
+Ở lần thiết lập đầu tiên, lấy bootstrap token ngay trên máy cài đặt:
+```bash
+grep '^SETUP_BOOTSTRAP_TOKEN=' .env
+```
+Không gửi token này qua chat hoặc commit vào repository.
+
 Setup Wizard hỗ trợ 10 bước cấu hình trực quan:
 1. **System Baseline:** Tên công trình, Múi giờ, Ngôn ngữ.
 2. **Admin Account:** Tạo tài khoản quản trị ban đầu.
 3. **KNX Gateway:** IP/Host, Port, kiểu kết nối (Tunneling/Routing), địa chỉ cá nhân + Nút kiểm tra Socket connection dry-run.
-4. **AI Provider:** OpenAI, Anthropic, Gemini, Ollama + Format dry-run test.
-5. **OpenClaw Integration:** Quản lý skill symlink & trạng thái 9router.
-6. **Telegram Notification:** Cấu hình Bot Token & Chat ID + Format dry-run test.
-7. **Zalo Integration:** Cấu hình Webhook URL + Format dry-run test.
+4. **AI Provider:** Provider, model, base URL, API key và kiểm tra cấu hình.
+5. **OpenClaw Integration:** Runtime, workspace, provider/model, skill symlink và trạng thái 9router.
+6. **Telegram Notification:** Bot Token, Chat ID, allow-list và trạng thái pairing.
+7. **Zalo Integration:** Webhook URL, allow-list và trạng thái pairing.
 8. **Remote Access:** Kiểm tra trạng thái Tailscale VPN (Read-only).
 9. **Review & Summary:** Khái quát toàn bộ cấu hình trước khi lưu.
-10. **Complete:** Hoàn tất cài đặt và khóa Setup Wizard.
+10. **Complete:** Kiểm tra các trường bắt buộc, lưu cấu hình và thông báo service cần restart.
 
 ## 4. Quản Lý Dịch Vụ Systemd
 ```bash

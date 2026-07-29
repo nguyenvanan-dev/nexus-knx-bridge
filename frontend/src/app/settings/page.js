@@ -48,7 +48,7 @@ export default function SettingsPage() {
       if (res.ok) {
         const data = await res.json();
         setCurrentUser(data);
-        if (data.role === 'Admin') {
+        if (String(data.role || '').toLowerCase() === 'admin') {
             fetchUsers();
             fetchConfigs();
         }
@@ -259,7 +259,7 @@ export default function SettingsPage() {
           >
               General System
           </button>
-          {currentUser?.role === 'Admin' && (
+          {String(currentUser?.role || '').toLowerCase() === 'admin' && (
               <>
                   <button
                       className={`px-[18px] py-[10px] rounded-[9px] text-[15px] font-semibold transition-all whitespace-nowrap border ${
@@ -280,6 +280,16 @@ export default function SettingsPage() {
                       onClick={() => setActiveTab('config')}
                   >
                       System Config
+                  </button>
+                  <button
+                      className={`px-[18px] py-[10px] rounded-[9px] text-[15px] font-semibold transition-all whitespace-nowrap border ${
+                        activeTab === 'integrations'
+                          ? 'bg-[var(--accent)] border-[var(--accent)] text-white shadow-sm'
+                          : 'bg-white/[0.02] border-white/[0.08] text-white/60 hover:bg-white/[0.06] hover:text-white'
+                      }`}
+                      onClick={() => setActiveTab('integrations')}
+                  >
+                      Integration Setup
                   </button>
               </>
           )}
@@ -446,7 +456,7 @@ export default function SettingsPage() {
         )}
 
         {/* TAB 2: Users */}
-        {activeTab === 'users' && currentUser?.role === 'Admin' && (
+        {activeTab === 'users' && String(currentUser?.role || '').toLowerCase() === 'admin' && (
         <div className="glass-panel shrink-0" style={{ padding: '20px', marginBottom: '24px' }}>
           <h3 style={{ fontSize: '1.1rem', marginBottom: '16px', color: 'var(--text-primary)', fontWeight: '600' }}>User Management</h3>
           <p style={{ color: 'var(--text-secondary)', marginBottom: '16px', fontSize: '0.9rem' }}>
@@ -505,7 +515,7 @@ export default function SettingsPage() {
         </div>
         )}
         {/* TAB 3: System Config */}
-        {activeTab === 'config' && currentUser?.role === 'Admin' && (
+        {activeTab === 'config' && String(currentUser?.role || '').toLowerCase() === 'admin' && (
         <div className="glass-panel shrink-0" style={{ padding: '20px', marginBottom: '24px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <div>
@@ -542,10 +552,36 @@ export default function SettingsPage() {
           </div>
         </div>
         )}
+        {/* TAB 4: Guided integration setup */}
+        {activeTab === 'integrations' && String(currentUser?.role || '').toLowerCase() === 'admin' && (
+          <div className="glass-panel shrink-0" style={{ padding: '24px', marginBottom: '24px' }}>
+            <h3 style={{ fontSize: '1.2rem', color: 'var(--text-primary)', fontWeight: '600', marginBottom: '8px' }}>
+              Guided Integration Setup
+            </h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', lineHeight: 1.6, marginBottom: '20px', maxWidth: '820px' }}>
+              Cấu hình KNX Gateway, AI provider, OpenClaw, Telegram, Zalo và Tailscale bằng quy trình có kiểm tra an toàn. Secret đã lưu chỉ hiển thị trạng thái, không hiển thị lại giá trị.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3" style={{ marginBottom: '20px' }}>
+              {['KNX & System', 'AI & OpenClaw', 'Telegram, Zalo & Tailscale'].map(label => (
+                <div key={label} style={{ padding: '14px 16px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '7px', background: 'rgba(255,255,255,0.025)', color: 'var(--text-primary)', fontWeight: 600 }}>
+                  {label}
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => { window.location.href = '/setup'; }}
+              style={{ background: 'var(--accent)', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}
+            >
+              Open Setup Wizard
+            </button>
+          </div>
+        )}
         {/* Live Logs Panel (Always visible across tabs for debug, or only on System Tab?)
             Since it was global, let's keep it visible at the bottom or only in System tab.
             Let's put it outside the tabs, but within the scrollable container.
         */}
+        {activeTab === 'system' && (
         <div className="glass-panel flex-1" style={{ padding: '20px', display: 'flex', flexDirection: 'column', marginTop: '24px', minHeight: '300px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <h3 style={{ fontSize: '1.1rem', color: 'var(--text-primary)', fontWeight: '600' }}>System Logs (journalctl)</h3>
@@ -579,6 +615,7 @@ export default function SettingsPage() {
           }}
         />
       </div>
+        )}
 
       </div> {/* End scrollable area */}
     </div>

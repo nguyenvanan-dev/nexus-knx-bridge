@@ -38,17 +38,32 @@ else
     ERRORS=$((ERRORS + 1))
 fi
 
-if systemctl --user is-active --quiet knx-bridge.service 2>/dev/null; then
-    echo "✓ [OK] Service knx-bridge is ACTIVE"
+if [ -f ".env" ]; then
+    ENV_PERM=$(stat -c "%a" .env 2>/dev/null || stat -f "%Lp" .env 2>/dev/null || echo "unknown")
+    if [ "$ENV_PERM" = "600" ]; then
+        echo "✓ [OK] .env exists with secure permissions (0600)"
+    else
+        echo "✗ [FAIL] .env permissions are $ENV_PERM; expected 600"
+        ERRORS=$((ERRORS + 1))
+    fi
 else
-    echo "⚠ [WARN] Service knx-bridge is not active"
+    echo "✗ [FAIL] .env missing"
+    ERRORS=$((ERRORS + 1))
 fi
 
-if systemctl --user is-active --quiet knx-frontend.service 2>/dev/null; then
-    echo "✓ [OK] Service knx-frontend is ACTIVE"
-else
-    echo "⚠ [WARN] Service knx-frontend is not active"
-fi
+check_service() {
+    local service="$1"
+    if systemctl --user is-active --quiet "$service" 2>/dev/null; then
+        echo "✓ [OK] User service $service is ACTIVE"
+    elif systemctl is-active --quiet "$service" 2>/dev/null; then
+        echo "✓ [OK] System service $service is ACTIVE"
+    else
+        echo "⚠ [WARN] Service $service is not active"
+    fi
+}
+
+check_service knx-bridge.service
+check_service knx-frontend.service
 
 echo "--------------------------------------------------"
 if [ "$ERRORS" -eq 0 ]; then
@@ -57,3 +72,4 @@ else
     echo "Result: Found $ERRORS issues during check"
 fi
 echo "=================================================="
+exit "$ERRORS"

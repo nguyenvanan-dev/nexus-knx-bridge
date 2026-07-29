@@ -49,24 +49,37 @@ export default function SetupWizardPage() {
   const [openclawForm, setOpenclawForm] = useState({
     enabled: false,
     runtime_path: '',
-    workspace_path: ''
+    workspace_path: '',
+    provider: '',
+    model: '',
+    base_url: ''
   });
 
   const [telegramForm, setTelegramForm] = useState({
     enabled: false,
     bot_token: '',
-    chat_id: ''
+    chat_id: '',
+    allow_from: []
   });
 
   const [zaloForm, setZaloForm] = useState({
     enabled: false,
     webhook_url: '',
-    integration_mode: 'webhook'
+    integration_mode: 'webhook',
+    allow_from: []
+  });
+  const [remoteForm, setRemoteForm] = useState({
+    tailscale_enabled: false,
+    tailscale_hostname: ''
   });
 
   useEffect(() => {
     loadSetupStatus();
   }, []);
+
+  useEffect(() => {
+    if (step >= 5) refreshIntegrations();
+  }, [step]);
 
   const loadSetupStatus = async () => {
     setLoading(true);
@@ -81,11 +94,8 @@ export default function SetupWizardPage() {
         if (data.config.telegram) setTelegramForm(prev => ({ ...prev, ...data.config.telegram, bot_token: '' }));
         if (data.config.zalo) setZaloForm(prev => ({ ...prev, ...data.config.zalo, webhook_url: '' }));
         if (data.config.openclaw) setOpenclawForm(prev => ({ ...prev, ...data.config.openclaw }));
+        if (data.config.remote_access) setRemoteForm(prev => ({ ...prev, ...data.config.remote_access }));
       }
-
-      const intRes = await fetch('/api/system/integrations');
-      const intData = await intRes.json();
-      setIntegrations(intData);
     } catch (e) {
       showToast(`Không thể tải trạng thái setup: ${e.message}`, 'error');
     } finally {
@@ -101,6 +111,17 @@ export default function SetupWizardPage() {
     'Content-Type': 'application/json',
     ...(bootstrapToken ? { 'X-Setup-Token': bootstrapToken } : {})
   });
+
+  const refreshIntegrations = async () => {
+    try {
+      const res = await fetch('/api/setup/integrations', { headers: setupHeaders() });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Không thể đọc trạng thái tích hợp');
+      setIntegrations(data);
+    } catch (error) {
+      showToast(error.message, 'warning');
+    }
+  };
 
   const handleSaveStep = async (category, payload, nextStep = true) => {
     setSaving(true);
@@ -190,10 +211,19 @@ export default function SetupWizardPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        showToast('Hoàn tất thiết lập hệ thống thành công!', 'success');
+        showToast(
+          data.restart_required
+            ? 'Đã lưu setup. Cần restart service để nạp cấu hình mới.'
+            : 'Hoàn tất thiết lập hệ thống thành công!',
+          'success'
+        );
         router.push('/settings');
       } else {
-        showToast(data.detail || 'Lỗi hoàn tất setup', 'error');
+        const detail = data.detail;
+        const message = typeof detail === 'object'
+          ? `${detail.message}: ${(detail.blockers || []).join('; ')}`
+          : detail;
+        showToast(message || 'Lỗi hoàn tất setup', 'error');
       }
     } catch (e) {
       showToast(`Lỗi: ${e.message}`, 'error');
@@ -472,7 +502,7 @@ export default function SetupWizardPage() {
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                   <input
                     type={showSecrets.ai_key ? 'text' : 'password'}
-                    placeholder={status?.config?.ai?.api_key?.configured ? `Configured (...${status.config.ai.api_key.masked_hint})` : 'Nhập API Key mới'}
+                    placeholder={status?.config?.ai?.api_key?.configured ? 'Đã cấu hình - để trống nếu giữ nguyên' : 'Nhập API Key mới'}
                     value={aiForm.api_key}
                     onChange={e => setAiForm({ ...aiForm, api_key: e.target.value })}
                     style={{ flex: 1, padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }}
@@ -532,6 +562,26 @@ export default function SetupWizardPage() {
                 />
                 Kích hoạt tích hợp OpenClaw
               </label>
+              {[
+                ['runtime_path', 'Đường dẫn runtime', '/usr/local/bin/openclaw'],
+                ['workspace_path', 'Workspace', '/home/user/.openclaw/workspace'],
+                ['provider', 'AI provider', '9router'],
+                ['model', 'Model', '9router/model-name'],
+                ['base_url', 'Provider base URL', 'http://127.0.0.1:20128/v1']
+              ].map(([field, label, placeholder]) => (
+                <div key={field}>
+                  <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>{label}</label>
+                  <input
+                    value={openclawForm[field] || ''}
+                    placeholder={placeholder}
+                    onChange={e => setOpenclawForm({ ...openclawForm, [field]: e.target.value })}
+                    style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }}
+                  />
+                </div>
+              ))}
+              <button type="button" onClick={refreshIntegrations} style={{ alignSelf: 'flex-start', padding: '0.55rem 1rem', background: '#334155', color: '#f8fafc', border: 0, borderRadius: '0.375rem', cursor: 'pointer' }}>
+                Làm mới trạng thái runtime
+              </button>
             </div>
           </div>
         )}
@@ -554,7 +604,7 @@ export default function SetupWizardPage() {
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                   <input
                     type={showSecrets.tg_token ? 'text' : 'password'}
-                    placeholder={status?.config?.telegram?.bot_token?.configured ? `Configured (...${status.config.telegram.bot_token.masked_hint})` : 'Nhập Bot Token (ví dụ: 123456:ABC...)'}
+                    placeholder={status?.config?.telegram?.bot_token?.configured ? 'Đã cấu hình - để trống nếu giữ nguyên' : 'Nhập Bot Token (ví dụ: 123456:ABC...)'}
                     value={telegramForm.bot_token}
                     onChange={e => setTelegramForm({ ...telegramForm, bot_token: e.target.value })}
                     style={{ flex: 1, padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }}
@@ -586,6 +636,20 @@ export default function SetupWizardPage() {
                   style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }}
                 />
               </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Allow-list (ID, cách nhau bằng dấu phẩy):</label>
+                <input
+                  type="text"
+                  value={Array.isArray(telegramForm.allow_from) ? telegramForm.allow_from.join(', ') : telegramForm.allow_from}
+                  onChange={e => setTelegramForm({ ...telegramForm, allow_from: e.target.value })}
+                  style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }}
+                />
+                {integrations?.openclaw?.telegram_pairing && (
+                  <div style={{ color: '#94a3b8', marginTop: '0.4rem' }}>
+                    Pairing requests: {integrations.openclaw.telegram_pairing.pending_pairing_requests} · Allowed: {integrations.openclaw.telegram_pairing.allow_count}
+                  </div>
+                )}
+              </div>
 
               <div style={{ marginTop: '0.5rem' }}>
                 <button
@@ -596,6 +660,20 @@ export default function SetupWizardPage() {
                 >
                   {testing ? 'Đang kiểm tra...' : '🔍 Validate Configuration (No Messages Sent)'}
                 </button>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Allow-list (ID, cách nhau bằng dấu phẩy):</label>
+                <input
+                  type="text"
+                  value={Array.isArray(zaloForm.allow_from) ? zaloForm.allow_from.join(', ') : zaloForm.allow_from}
+                  onChange={e => setZaloForm({ ...zaloForm, allow_from: e.target.value })}
+                  style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }}
+                />
+                {integrations?.openclaw?.zalo_pairing && (
+                  <div style={{ color: '#94a3b8', marginTop: '0.4rem' }}>
+                    Pairing requests: {integrations.openclaw.zalo_pairing.pending_pairing_requests} · Allowed: {integrations.openclaw.zalo_pairing.allow_count}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -619,7 +697,7 @@ export default function SetupWizardPage() {
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                   <input
                     type={showSecrets.zalo_url ? 'text' : 'password'}
-                    placeholder={status?.config?.zalo?.webhook_url?.configured ? `Configured (...${status.config.zalo.webhook_url.masked_hint})` : 'Nhập Webhook URL'}
+                    placeholder={status?.config?.zalo?.webhook_url?.configured ? 'Đã cấu hình - để trống nếu giữ nguyên' : 'Nhập Webhook URL'}
                     value={zaloForm.webhook_url}
                     onChange={e => setZaloForm({ ...zaloForm, webhook_url: e.target.value })}
                     style={{ flex: 1, padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }}
@@ -671,6 +749,17 @@ export default function SetupWizardPage() {
                 </div>
               </div>
             )}
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#f8fafc', marginTop: '1rem' }}>
+              <input
+                type="checkbox"
+                checked={remoteForm.tailscale_enabled}
+                onChange={e => setRemoteForm({ ...remoteForm, tailscale_enabled: e.target.checked })}
+              />
+              Dùng Tailscale làm phương thức truy cập từ xa
+            </label>
+            <button type="button" onClick={refreshIntegrations} style={{ marginTop: '1rem', padding: '0.55rem 1rem', background: '#334155', color: '#f8fafc', border: 0, borderRadius: '0.375rem', cursor: 'pointer' }}>
+              Kiểm tra lại Tailscale
+            </button>
           </div>
         )}
 
@@ -696,6 +785,16 @@ export default function SetupWizardPage() {
               </div>
               <div style={{ background: '#1e293b', padding: '0.8rem', borderRadius: '0.375rem' }}>
                 <strong>Zalo:</strong> {zaloForm.enabled ? '✓ Enabled' : 'Disabled'}
+              </div>
+              <div style={{ background: '#1e293b', padding: '0.8rem', borderRadius: '0.375rem' }}>
+                <strong>Remote access:</strong> {remoteForm.tailscale_enabled ? 'Tailscale' : 'Local network only'}
+              </div>
+              <div style={{ background: '#1e293b', padding: '0.8rem', borderRadius: '0.375rem' }}>
+                <strong>Services:</strong>{' '}
+                {Object.entries(integrations?.services || {}).map(([name, state]) => `${name}: ${state}`).join(' · ') || 'Chưa kiểm tra'}
+              </div>
+              <div style={{ background: '#1e293b', padding: '0.8rem', borderRadius: '0.375rem' }}>
+                <strong>Backup:</strong> {integrations?.backup_available ? 'Sẵn sàng tải trong System Settings' : 'Chưa có database để backup'}
               </div>
             </div>
           </div>
@@ -815,7 +914,7 @@ export default function SetupWizardPage() {
             {step === 8 && (
               <button
                 type="button"
-                onClick={() => setStep(prev => prev + 1)}
+                onClick={() => handleSaveStep('remote_access', remoteForm)}
                 style={{ padding: '0.6rem 1.5rem', background: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontWeight: 600 }}
               >
                 Tiếp theo →

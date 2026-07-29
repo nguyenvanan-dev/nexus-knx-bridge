@@ -52,20 +52,33 @@ DEFAULT_CONFIG = {
     "telegram": {
         "enabled": False,
         "bot_token": "",
-        "chat_id": ""
+        "chat_id": "",
+        "allow_from": []
     },
     "zalo": {
         "enabled": False,
         "webhook_url": "",
-        "integration_mode": "webhook"
+        "integration_mode": "webhook",
+        "allow_from": []
     },
     "openclaw": {
         "enabled": False,
         "runtime_path": "",
-        "workspace_path": ""
+        "workspace_path": "",
+        "provider": "",
+        "model": "",
+        "base_url": ""
     },
     "remote_access": {
-        "ngrok_enabled": False
+        "tailscale_enabled": False,
+        "tailscale_hostname": ""
+    },
+    "frontend": {
+        "backend_url": "http://127.0.0.1:5055",
+        "public_host": "",
+        "secure_cookies": False,
+        "frontend_port": 3000,
+        "backend_port": 5055
     }
 }
 
@@ -175,6 +188,8 @@ class ConfigService:
                 validated["bot_token"] = token
             elif "bot_token" in data:
                 validated["bot_token"] = data["bot_token"]
+            if "allow_from" in data:
+                validated["allow_from"] = self._validate_allow_list(data["allow_from"])
 
         elif category == "zalo":
             if "webhook_url" in data and data["webhook_url"] and data["webhook_url"] != "__CLEAR__":
@@ -184,12 +199,65 @@ class ConfigService:
                 validated["webhook_url"] = url
             elif "webhook_url" in data:
                 validated["webhook_url"] = data["webhook_url"]
+            if "allow_from" in data:
+                validated["allow_from"] = self._validate_allow_list(data["allow_from"])
+
+        elif category == "openclaw":
+            if "runtime_path" in data and data["runtime_path"]:
+                runtime_path = os.path.abspath(
+                    os.path.expanduser(str(data["runtime_path"]).strip())
+                )
+                if not os.path.isfile(runtime_path) or not os.access(runtime_path, os.X_OK):
+                    raise ValueError("runtime_path phải là file thực thi đang tồn tại.")
+                validated["runtime_path"] = runtime_path
+            if "workspace_path" in data and data["workspace_path"]:
+                workspace = os.path.abspath(
+                    os.path.expanduser(str(data["workspace_path"]).strip())
+                )
+                if not workspace.startswith(os.path.expanduser("~") + os.sep):
+                    raise ValueError("workspace_path phải nằm trong thư mục home của người dùng.")
+                validated["workspace_path"] = workspace
+            if "base_url" in data and data["base_url"]:
+                url = str(data["base_url"]).strip()
+                if not url.startswith(("http://", "https://")):
+                    raise ValueError("OpenClaw base_url phải bắt đầu bằng http:// hoặc https://")
+                validated["base_url"] = url
+
+        elif category == "frontend":
+            if "backend_url" in data and data["backend_url"]:
+                url = str(data["backend_url"]).strip()
+                if not url.startswith(("http://", "https://")):
+                    raise ValueError("Backend URL phải bắt đầu bằng http:// hoặc https://")
+                validated["backend_url"] = url
+            for field in ("frontend_port", "backend_port"):
+                if field in data:
+                    try:
+                        port = int(data[field])
+                        if not 1 <= port <= 65535:
+                            raise ValueError()
+                    except (TypeError, ValueError):
+                        raise ValueError(f"{field} phải từ 1 đến 65535.")
+                    validated[field] = port
 
         for k, v in data.items():
             if k not in validated and k != "clear_secrets":
                 validated[k] = v
 
         return validated
+
+    @staticmethod
+    def _validate_allow_list(value: Any) -> list:
+        if value is None:
+            return []
+        items = value if isinstance(value, list) else str(value).split(",")
+        result = []
+        for item in items:
+            cleaned = str(item).strip()
+            if cleaned and cleaned not in result:
+                result.append(cleaned)
+        if len(result) > 100:
+            raise ValueError("Allow-list không được vượt quá 100 mục.")
+        return result
 
     def update_category_config(self, category: str, data: Dict[str, Any]) -> Dict[str, Any]:
         current = self.load_raw_config()
@@ -280,7 +348,7 @@ class ConfigService:
     def save_config(self, config_data: Dict[str, Any], backup: bool = True):
         # Backup before write
         if backup and os.path.exists(self.config_path):
-            shutil.copy2(self.config_path, CONFIG_BACKUP)
+            shutil.copy2(self.config_path, f"{self.config_path}.bak")
 
         dirname = os.path.dirname(self.config_path)
         os.makedirs(dirname, exist_ok=True)

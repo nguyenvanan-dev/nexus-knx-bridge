@@ -3922,6 +3922,53 @@ async def system_integrations(
         "tailscale": tailscale_info
     }
 
+
+def _safe_service_status() -> dict:
+    result = {}
+    for service in ("knx-bridge.service", "knx-frontend.service", "9router.service"):
+        state = "inactive"
+        for command in (
+            ["systemctl", "--user", "is-active", service],
+            ["systemctl", "is-active", service],
+        ):
+            try:
+                check = subprocess.run(
+                    command, capture_output=True, text=True, timeout=2
+                )
+                if check.returncode == 0:
+                    state = check.stdout.strip() or "active"
+                    break
+            except Exception:
+                continue
+        if service == "9router.service" and state == "inactive":
+            try:
+                process = subprocess.run(
+                    ["pgrep", "-f", "(^|/)9router( |$)"],
+                    capture_output=True,
+                    text=True,
+                    timeout=2,
+                )
+                if process.returncode == 0 and process.stdout.strip():
+                    state = "active (process)"
+            except Exception:
+                pass
+        result[service] = state
+    return result
+
+
+@app.get("/api/setup/integrations")
+async def setup_integrations(
+    setup_user: dict = Depends(require_setup_access),
+):
+    tailscale = await test_tailscale_status(setup_user)
+    return {
+        "openclaw": openclaw_config_service.get_status(),
+        "tailscale": tailscale,
+        "services": _safe_service_status(),
+        "backup_available": (BASE_DIR / "smarthome.db").exists(),
+    }
+
+
 @app.post("/api/setup/{category}")
 async def setup_category(
     category: str,
@@ -3929,17 +3976,68 @@ async def setup_category(
     setup_user: dict = Depends(require_setup_access),
 ):
     if category == "complete":
+        raw = config_service.load_raw_config()
+        blockers = []
+        if not str(raw.get("system", {}).get("installation_name", "")).strip():
+            blockers.append("Tên hệ thống chưa được cấu hình")
+        knx = raw.get("knx", {})
+        if not str(knx.get("gateway_host", "")).strip() or not knx.get("gateway_port"):
+            blockers.append("KNX Gateway chưa đầy đủ")
+        ai = raw.get("ai", {})
+        if ai.get("provider") and not ai.get("model"):
+            blockers.append("AI model chưa được chọn")
+        telegram = raw.get("telegram", {})
+        if telegram.get("enabled") and not telegram.get("bot_token"):
+            blockers.append("Telegram đang bật nhưng chưa có Bot Token")
+        zalo = raw.get("zalo", {})
+        if zalo.get("enabled") and not zalo.get("webhook_url"):
+            blockers.append("Zalo đang bật nhưng chưa có Webhook URL")
+        openclaw = raw.get("openclaw", {})
+        openclaw_status = openclaw_config_service.get_status()
+        if openclaw.get("enabled") and not openclaw_status["runtime_installed"]:
+            blockers.append("OpenClaw đang bật nhưng runtime chưa được cài")
+        if blockers:
+            raise HTTPException(
+                status_code=409,
+                detail={"message": "Setup chưa sẵn sàng", "blockers": blockers},
+            )
         config_service.update_category_config("system", {"setup_complete": True})
-        return {"ok": True, "message": "Setup completed successfully."}
+        return {
+            "ok": True,
+            "message": "Setup completed successfully.",
+            "restart_required": True,
+            "services": _safe_service_status(),
+        }
 
-    valid_categories = ["system", "knx", "ai", "telegram", "zalo", "openclaw"]
+    valid_categories = [
+        "system", "knx", "ai", "telegram", "zalo", "openclaw",
+        "remote_access", "frontend",
+    ]
     if category not in valid_categories:
         raise HTTPException(status_code=400, detail=f"Invalid setup category: {category}")
 
     try:
         res = config_service.update_category_config(category, payload)
         if category == "openclaw":
+            if payload.get("enabled"):
+                updated = openclaw_config_service.update_runtime_safe(
+                    provider=str(payload.get("provider", "")).strip(),
+                    model=str(payload.get("model", "")).strip(),
+                    base_url=str(payload.get("base_url", "")).strip(),
+                    workspace_path=str(payload.get("workspace_path", "")).strip(),
+                )
+                if openclaw_config_service.get_status()["config_present"] and not updated:
+                    raise ValueError("Không thể cập nhật cấu hình OpenClaw an toàn.")
             openclaw_config_service.ensure_skills_symlink()
+        elif category in {"telegram", "zalo"}:
+            raw = config_service.load_raw_config()[category]
+            openclaw_config_service.update_channel_safe(
+                channel=category,
+                enabled=bool(raw.get("enabled")),
+                token=str(raw.get("bot_token", "")),
+                webhook_url=str(raw.get("webhook_url", "")),
+                allow_from=raw.get("allow_from", []),
+            )
         return {"ok": True, "category": category, "data": res}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

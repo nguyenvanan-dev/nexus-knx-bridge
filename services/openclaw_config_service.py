@@ -1,148 +1,250 @@
-import os
 import json
+import os
 import shutil
-import tempfile
 import subprocess
+import tempfile
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 HOME_DIR = Path.home()
 OPENCLAW_DIR = HOME_DIR / ".openclaw"
 OPENCLAW_CONFIG = OPENCLAW_DIR / "openclaw.json"
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-class OpenClawConfigService:
-    def __init__(self):
-        pass
 
-    def _is_path_safe(self, path: Path) -> bool:
+class OpenClawConfigService:
+    def __init__(
+        self,
+        openclaw_dir: Optional[Path] = None,
+        project_root: Optional[Path] = None,
+    ):
+        self.openclaw_dir = Path(openclaw_dir or OPENCLAW_DIR)
+        self.home_dir = self.openclaw_dir.parent
+        self.config_path = self.openclaw_dir / "openclaw.json"
+        self.credentials_dir = self.openclaw_dir / "credentials"
+        self.project_root = Path(project_root or PROJECT_ROOT)
+
+    @staticmethod
+    def _service_state(name: str) -> str:
+        for command in (
+            ["systemctl", "--user", "is-active", name],
+            ["systemctl", "is-active", name],
+        ):
+            try:
+                result = subprocess.run(
+                    command, capture_output=True, text=True, timeout=2
+                )
+                state = result.stdout.strip()
+                if result.returncode == 0:
+                    return state or "active"
+            except Exception:
+                continue
+        if name == "9router.service":
+            try:
+                process = subprocess.run(
+                    ["pgrep", "-f", "(^|/)9router( |$)"],
+                    capture_output=True,
+                    text=True,
+                    timeout=2,
+                )
+                if process.returncode == 0 and process.stdout.strip():
+                    return "active (process)"
+            except Exception:
+                pass
+        return "inactive"
+
+    def _load_config(self) -> Dict[str, Any]:
         try:
-            resolved = path.resolve()
-            return HOME_DIR in resolved.parents or resolved == HOME_DIR
+            data = json.loads(self.config_path.read_text(encoding="utf-8"))
+            return data if isinstance(data, dict) else {}
         except Exception:
-            return False
+            return {}
+
+    def _pairing_status(self, channel: str, channel_config: Dict[str, Any]) -> Dict[str, Any]:
+        allow_from = channel_config.get("allowFrom") or channel_config.get("groupAllowFrom") or []
+        allow_count = len(allow_from) if isinstance(allow_from, list) else 0
+        pairing_file = self.credentials_dir / f"{channel}-pairing.json"
+        pending = 0
+        if pairing_file.exists():
+            try:
+                pairing = json.loads(pairing_file.read_text(encoding="utf-8"))
+                requests = pairing.get("requests", []) if isinstance(pairing, dict) else []
+                pending = len(requests) if isinstance(requests, list) else 0
+            except Exception:
+                pass
+        return {
+            "configured": bool(channel_config),
+            "enabled": bool(channel_config.get("enabled", channel == "telegram")),
+            "token_configured": bool(channel_config.get("botToken")),
+            "allow_count": allow_count,
+            "pending_pairing_requests": pending,
+            "credentials_file_present": pairing_file.exists(),
+        }
 
     def get_status(self) -> Dict[str, Any]:
         executable = shutil.which("openclaw") or shutil.which("9router")
-        runtime_installed = executable is not None
-
-        service_status = "unknown"
-        try:
-            res = subprocess.run(
-                ["systemctl", "is-active", "9router.service"],
-                capture_output=True, text=True, timeout=2
+        config = self._load_config()
+        workspace = Path(
+            config.get("agents", {}).get("defaults", {}).get(
+                "workspace", self.openclaw_dir / "workspace"
             )
-            if res.returncode == 0:
-                service_status = "active"
-            else:
-                service_status = res.stdout.strip() or "inactive"
-        except Exception:
-            service_status = "not_found"
-
-        workspace_path = str(OPENCLAW_DIR / "workspace")
-        workspace_exists = (OPENCLAW_DIR / "workspace").exists()
-
-        # Check skill symlink
-        skills_target = OPENCLAW_DIR / "workspace" / "skills"
+        ).expanduser()
+        skills_target = workspace / "skills"
         symlink_valid = False
         if skills_target.is_symlink():
             try:
-                target = skills_target.readlink()
-                symlink_valid = (target.resolve() == (PROJECT_ROOT / "skills").resolve())
-            except Exception:
-                symlink_valid = False
-
-        # Read config safe metadata (provider/model ONLY, NO KEYS)
-        provider_info = {"provider": "none", "model": "none", "configured": False}
-        telegram_pairing = {"paired": False, "mode": "none"}
-        zalo_pairing = {"paired": False, "mode": "none"}
-
-        if OPENCLAW_CONFIG.exists():
-            try:
-                with open(OPENCLAW_CONFIG, "r", encoding="utf-8") as f:
-                    cfg = json.load(f)
-
-                # Check provider (safe fields only)
-                if "ai" in cfg and isinstance(cfg["ai"], dict):
-                    provider_info["provider"] = cfg["ai"].get("provider", "unknown")
-                    provider_info["model"] = cfg["ai"].get("model", "unknown")
-                    provider_info["configured"] = bool(cfg["ai"].get("provider"))
-                elif "llm" in cfg and isinstance(cfg["llm"], dict):
-                    provider_info["provider"] = cfg["llm"].get("provider", "unknown")
-                    provider_info["model"] = cfg["llm"].get("model", "unknown")
-                    provider_info["configured"] = True
-
-                # Check Telegram / Zalo pairing safely
-                if "telegram" in cfg and isinstance(cfg["telegram"], dict):
-                    telegram_pairing["paired"] = bool(cfg["telegram"].get("bot_name") or cfg["telegram"].get("enabled"))
-                    telegram_pairing["mode"] = cfg["telegram"].get("mode", "bot")
-                if "zalo" in cfg and isinstance(cfg["zalo"], dict):
-                    zalo_pairing["paired"] = bool(cfg["zalo"].get("enabled"))
-                    zalo_pairing["mode"] = cfg["zalo"].get("mode", "webhook")
+                symlink_valid = (
+                    skills_target.resolve() == (self.project_root / "skills").resolve()
+                )
             except Exception:
                 pass
 
+        model_ref = str(
+            config.get("agents", {}).get("defaults", {}).get("model", "")
+        )
+        provider = model_ref.split("/", 1)[0] if "/" in model_ref else ""
+        provider_config = config.get("models", {}).get("providers", {}).get(provider, {})
+        channels = config.get("channels", {})
+
         return {
-            "runtime_installed": runtime_installed,
+            "runtime_installed": executable is not None,
             "executable_path": executable or "",
-            "service_status": service_status,
-            "workspace_path": workspace_path,
-            "workspace_exists": workspace_exists,
+            "service_status": self._service_state("9router.service"),
+            "workspace_path": str(workspace),
+            "workspace_exists": workspace.exists(),
             "skills_symlink_valid": symlink_valid,
-            "provider_metadata": provider_info,
-            "telegram_pairing": telegram_pairing,
-            "zalo_pairing": zalo_pairing
+            "config_present": self.config_path.exists(),
+            "provider_metadata": {
+                "provider": provider or "none",
+                "model": model_ref or "none",
+                "configured": bool(model_ref),
+                "base_url_configured": bool(
+                    provider_config.get("baseUrl")
+                    if isinstance(provider_config, dict)
+                    else False
+                ),
+                "api_key_configured": bool(
+                    provider_config.get("apiKey")
+                    if isinstance(provider_config, dict)
+                    else False
+                ),
+            },
+            "telegram_pairing": self._pairing_status(
+                "telegram", channels.get("telegram", {})
+            ),
+            "zalo_pairing": self._pairing_status("zalo", channels.get("zalo", {})),
         }
 
     def ensure_skills_symlink(self) -> bool:
-        workspace_skills = OPENCLAW_DIR / "workspace" / "skills"
-        repo_skills = PROJECT_ROOT / "skills"
-
+        workspace = Path(
+            self._load_config()
+            .get("agents", {})
+            .get("defaults", {})
+            .get("workspace", self.openclaw_dir / "workspace")
+        ).expanduser()
+        workspace_skills = workspace / "skills"
+        repo_skills = self.project_root / "skills"
         if not repo_skills.exists():
             return False
-
-        os.makedirs(OPENCLAW_DIR / "workspace", exist_ok=True)
-
-        if workspace_skills.is_symlink() or workspace_skills.exists():
-            if workspace_skills.is_symlink() and workspace_skills.readlink().resolve() == repo_skills.resolve():
+        workspace.mkdir(parents=True, exist_ok=True)
+        if workspace_skills.is_symlink():
+            if workspace_skills.resolve() == repo_skills.resolve():
                 return True
-            if workspace_skills.is_symlink():
-                workspace_skills.unlink()
-            elif workspace_skills.is_dir():
-                return False
+            workspace_skills.unlink()
+        elif workspace_skills.exists():
+            return False
+        workspace_skills.symlink_to(repo_skills, target_is_directory=True)
+        return True
 
+    def update_runtime_safe(
+        self,
+        provider: str = "",
+        model: str = "",
+        base_url: str = "",
+        workspace_path: str = "",
+    ) -> bool:
+        if not self.config_path.exists():
+            return False
+        config = self._load_config()
+        if not config:
+            return False
+        defaults = config.setdefault("agents", {}).setdefault("defaults", {})
+        if model:
+            defaults["model"] = model if "/" in model or not provider else f"{provider}/{model}"
+        if workspace_path:
+            workspace = Path(workspace_path).expanduser().resolve()
+            if self.home_dir not in workspace.parents and workspace != self.home_dir:
+                return False
+            defaults["workspace"] = str(workspace)
+        if provider and base_url:
+            providers = config.setdefault("models", {}).setdefault("providers", {})
+            providers.setdefault(provider, {})["baseUrl"] = base_url
+
+        self.openclaw_dir.mkdir(parents=True, exist_ok=True)
+        backup_path = self.openclaw_dir / "openclaw.json.bak"
+        shutil.copy2(self.config_path, backup_path)
+        fd, temp_path = tempfile.mkstemp(
+            dir=str(self.openclaw_dir), prefix=".openclaw_", suffix=".tmp"
+        )
         try:
-            workspace_skills.symlink_to(repo_skills, target_is_directory=True)
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump(config, handle, indent=2, ensure_ascii=False)
+                handle.write("\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.chmod(temp_path, 0o600)
+            os.replace(temp_path, self.config_path)
+            os.chmod(self.config_path, 0o600)
             return True
         except Exception:
-            return False
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            raise
 
     def update_provider_safe(self, provider: str, model: str) -> bool:
-        if not OPENCLAW_CONFIG.exists():
+        return self.update_runtime_safe(provider=provider, model=model)
+
+    def update_channel_safe(
+        self,
+        channel: str,
+        enabled: bool,
+        token: str = "",
+        webhook_url: str = "",
+        allow_from: Optional[list] = None,
+    ) -> bool:
+        if channel not in {"telegram", "zalo"} or not self.config_path.exists():
             return False
+        config = self._load_config()
+        target = config.setdefault("channels", {}).setdefault(channel, {})
+        target["enabled"] = bool(enabled)
+        if token:
+            target["botToken"] = token
+        if webhook_url:
+            target["webhookUrl"] = webhook_url
+        if allow_from is not None:
+            target["allowFrom"] = list(allow_from)
+            target["groupAllowFrom"] = list(allow_from)
+        plugins = config.setdefault("plugins", {}).setdefault("entries", {})
+        plugins.setdefault(channel, {})["enabled"] = bool(enabled)
 
-        backup_path = OPENCLAW_DIR / "openclaw.json.bak"
+        fd, temp_path = tempfile.mkstemp(
+            dir=str(self.openclaw_dir), prefix=".openclaw_", suffix=".tmp"
+        )
         try:
-            shutil.copy2(OPENCLAW_CONFIG, backup_path)
-            with open(OPENCLAW_CONFIG, "r", encoding="utf-8") as f:
-                cfg = json.load(f)
-
-            if "ai" not in cfg or not isinstance(cfg["ai"], dict):
-                cfg["ai"] = {}
-
-            cfg["ai"]["provider"] = provider
-            cfg["ai"]["model"] = model
-
-            # Atomic write
-            fd, temp_path = tempfile.mkstemp(dir=str(OPENCLAW_DIR), prefix=".openclaw_", suffix=".tmp")
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump(cfg, f, indent=2, ensure_ascii=False)
-                f.flush()
-                os.fsync(f.fileno())
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump(config, handle, indent=2, ensure_ascii=False)
+                handle.write("\n")
+                handle.flush()
+                os.fsync(handle.fileno())
             os.chmod(temp_path, 0o600)
-            os.replace(temp_path, OPENCLAW_CONFIG)
+            shutil.copy2(self.config_path, self.openclaw_dir / "openclaw.json.bak")
+            os.replace(temp_path, self.config_path)
+            os.chmod(self.config_path, 0o600)
             return True
         except Exception:
-            return False
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            raise
+
 
 openclaw_config_service = OpenClawConfigService()
