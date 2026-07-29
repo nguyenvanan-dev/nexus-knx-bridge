@@ -21,7 +21,12 @@ from fastapi.responses import HTMLResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, Field
 
+BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / ".env")
+
 import auth_utils
+from services.config_service import config_service
+from services.openclaw_config_service import openclaw_config_service
 
 # Removed xknx imports to use Driver Abstraction Layer
 from core.drivers.knx_driver import KNXDriver
@@ -50,7 +55,6 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(name)s %(levelname
 logger = logging.getLogger(__name__)
 
 
-BASE_DIR = Path(__file__).resolve().parent
 # DEVICES_FILE removed: devices.json is no longer a runtime config source
 DB_FILE = BASE_DIR / "data" / "chat_history.db"
 
@@ -134,8 +138,6 @@ def init_smarthome_db():
 
 init_db()
 init_smarthome_db()
-
-load_dotenv(BASE_DIR / ".env")
 
 KNX_GATEWAY_IP = os.getenv("KNX_GATEWAY_IP", "10.1.10.137")
 KNX_GATEWAY_PORT = int(os.getenv("KNX_GATEWAY_PORT", "3671"))
@@ -3412,7 +3414,14 @@ import time as _doc_time
 import re as _doc_re
 import html as _doc_html
 
-_DOC_UPLOAD_DIR = _DocPath("/home/an/.openclaw/workspace/knowledge/inbox/uploads")
+_DOC_UPLOAD_DIR = (
+    _DocPath.home()
+    / ".openclaw"
+    / "workspace"
+    / "knowledge"
+    / "inbox"
+    / "uploads"
+)
 _DOC_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 @app.get("/doc-upload", response_class=_HTMLResponse)
@@ -3453,15 +3462,15 @@ async def doc_upload_submit(file: UploadFile = _FastApiFile(...)):
     dst.write_bytes(data)
 
     cmd = [
-        "/home/an/knx-bridge/.venv/bin/python",
-        "/home/an/knx-bridge/tools/document_to_knx_skill.py",
+        str(BASE_DIR / ".venv" / "bin" / "python"),
+        str(BASE_DIR / "tools" / "document_to_knx_skill.py"),
         str(dst)
     ]
 
     try:
         r = _doc_subprocess.run(
             cmd,
-            cwd="/home/an/knx-bridge",
+            cwd=str(BASE_DIR),
             text=True,
             capture_output=True,
             timeout=180
@@ -3780,50 +3789,283 @@ async def restart_service(command: RestartCommand, x_knx_token: Optional[str] = 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# ── Structured Configuration & Setup Endpoints (Phase 3 & 7) ──────────────
+
+def is_bootstrap_allowed() -> bool:
+    cfg = config_service.load_raw_config()
+    return not cfg.get("system", {}).get("setup_complete", False)
+
+
+async def require_setup_access(
+    authorization: Optional[str] = Header(default=None),
+    x_setup_token: Optional[str] = Header(default=None),
+):
+    if authorization and authorization.lower().startswith("bearer "):
+        user = await auth_utils.get_current_user(authorization[7:].strip())
+        return await auth_utils.require_admin(user)
+
+    if not is_bootstrap_allowed():
+        raise HTTPException(
+            status_code=401,
+            detail="Administrator authentication is required",
+        )
+
+    expected_token = os.getenv("SETUP_BOOTSTRAP_TOKEN", "").strip()
+    if not expected_token:
+        raise HTTPException(
+            status_code=503,
+            detail="SETUP_BOOTSTRAP_TOKEN is not configured",
+        )
+    if not x_setup_token or not secrets.compare_digest(
+        x_setup_token,
+        expected_token,
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or missing setup bootstrap token",
+        )
+    return {"username": "setup-bootstrap", "role": "Admin"}
+
+
+@app.get("/api/setup/status")
+async def setup_status():
+    cfg = config_service.load_raw_config()
+    setup_complete = cfg.get("system", {}).get("setup_complete", False)
+    admin_exists = False
+    try:
+        db_path = BASE_DIR / "smarthome.db"
+        if db_path.exists():
+            conn = sqlite3.connect(str(db_path))
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM users WHERE lower(role)='admin'")
+            admin_exists = cursor.fetchone()[0] > 0
+            conn.close()
+    except Exception:
+        pass
+    return {
+        "setup_complete": setup_complete,
+        "admin_exists": admin_exists,
+        "config": config_service.get_public_config()
+    }
+
+
+class BootstrapAdminRequest(BaseModel):
+    username: str
+    password: str
+
+
+@app.post("/api/setup/bootstrap-admin")
+async def setup_bootstrap_admin(
+    payload: BootstrapAdminRequest,
+    setup_user: dict = Depends(require_setup_access),
+):
+    username = payload.username.strip()
+    if len(username) < 3 or len(payload.password) < 10:
+        raise HTTPException(
+            status_code=400,
+            detail="Username must have 3 characters and password at least 10 characters",
+        )
+
+    db_path = BASE_DIR / "smarthome.db"
+    with sqlite3.connect(str(db_path)) as conn:
+        admin_count = conn.execute(
+            "SELECT COUNT(*) FROM users WHERE lower(role)='admin'"
+        ).fetchone()[0]
+        if admin_count:
+            raise HTTPException(
+                status_code=409,
+                detail="An administrator account already exists",
+            )
+        try:
+            conn.execute(
+                """
+                INSERT INTO users (username, password_hash, role)
+                VALUES (?, ?, ?)
+                """,
+                (
+                    username,
+                    auth_utils.get_password_hash(payload.password),
+                    "Admin",
+                ),
+            )
+            conn.commit()
+        except sqlite3.IntegrityError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail="Username already exists",
+            ) from exc
+    return {"ok": True, "message": "Administrator account created"}
+
+
+@app.get("/api/system/integrations")
+async def system_integrations(
+    current_user: dict = Depends(auth_utils.require_admin),
+):
+    pub = config_service.get_public_config()
+    openclaw_st = openclaw_config_service.get_status()
+    tailscale_info = {"installed": False, "running": False, "ip": ""}
+    try:
+        ts_res = subprocess.run(["tailscale", "status", "--json"], capture_output=True, text=True, timeout=2)
+        if ts_res.returncode == 0:
+            ts_data = json.loads(ts_res.stdout)
+            tailscale_info["installed"] = True
+            tailscale_info["running"] = ts_data.get("BackendState") == "Running"
+            tailscale_info["ip"] = (ts_data.get("TailscaleIPs") or [""])[0]
+    except Exception:
+        pass
+    return {
+        "knx": pub.get("knx", {}),
+        "ai": pub.get("ai", {}),
+        "telegram": pub.get("telegram", {}),
+        "zalo": pub.get("zalo", {}),
+        "openclaw": openclaw_st,
+        "tailscale": tailscale_info
+    }
+
+@app.post("/api/setup/{category}")
+async def setup_category(
+    category: str,
+    payload: dict,
+    setup_user: dict = Depends(require_setup_access),
+):
+    if category == "complete":
+        config_service.update_category_config("system", {"setup_complete": True})
+        return {"ok": True, "message": "Setup completed successfully."}
+
+    valid_categories = ["system", "knx", "ai", "telegram", "zalo", "openclaw"]
+    if category not in valid_categories:
+        raise HTTPException(status_code=400, detail=f"Invalid setup category: {category}")
+
+    try:
+        res = config_service.update_category_config(category, payload)
+        if category == "openclaw":
+            openclaw_config_service.ensure_skills_symlink()
+        return {"ok": True, "category": category, "data": res}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Configuration update failed.")
+
+@app.post("/api/setup/test/knx")
+async def test_knx_config(
+    payload: dict,
+    setup_user: dict = Depends(require_setup_access),
+):
+    host = payload.get("gateway_host") or config_service.load_raw_config()["knx"]["gateway_host"]
+    port = payload.get("gateway_port") or config_service.load_raw_config()["knx"]["gateway_port"]
+    try:
+        port = int(port)
+    except Exception:
+        return {"ok": False, "detail": "Port không hợp lệ."}
+
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.settimeout(2.0)
+    try:
+        s.connect((host, port))
+        s.close()
+        return {"ok": True, "detail": f"Kết nối Gateway {host}:{port} thành công (Socket open)."}
+    except Exception:
+        return {"ok": False, "detail": f"Không thể kết nối socket tới {host}:{port}."}
+
+@app.post("/api/setup/test/ai")
+async def test_ai_config(
+    payload: dict,
+    setup_user: dict = Depends(require_setup_access),
+):
+    provider = payload.get("provider", "openai")
+    url = payload.get("base_url", "https://api.openai.com/v1")
+    key = payload.get("api_key", "")
+    if not url.startswith("http://") and not url.startswith("https://"):
+        return {"ok": False, "detail": "Base URL AI phải bắt đầu bằng http:// hoặc https://"}
+    has_key = bool(key) or config_service.get_public_config()["ai"]["api_key"]["configured"]
+    return {"ok": True, "detail": f"AI Provider '{provider}' hợp lệ. Key status: {'Configured' if has_key else 'Not Configured'}."}
+
+@app.post("/api/setup/test/telegram")
+async def test_telegram_config(
+    payload: dict,
+    setup_user: dict = Depends(require_setup_access),
+):
+    bot_token = payload.get("bot_token", "")
+    raw_token = bot_token if bot_token and bot_token != "__CLEAR__" else ""
+    if not raw_token:
+        curr = config_service.get_public_config()["telegram"]["bot_token"]
+        if not curr["configured"]:
+            return {"ok": False, "detail": "Telegram Bot Token chưa được cấu hình."}
+    else:
+        if not re.match(r"^\d+:[A-Za-z0-9_-]+$", raw_token):
+            return {"ok": False, "detail": "Format Telegram Bot Token không đúng."}
+    return {"ok": True, "detail": "Định dạng Telegram Bot Token hợp lệ."}
+
+@app.post("/api/setup/test/zalo")
+async def test_zalo_config(
+    payload: dict,
+    setup_user: dict = Depends(require_setup_access),
+):
+    url = payload.get("webhook_url", "")
+    if not url:
+        curr = config_service.get_public_config()["zalo"]["webhook_url"]
+        if not curr["configured"]:
+            return {"ok": False, "detail": "Zalo Webhook URL chưa được cấu hình."}
+    else:
+        if not (url.startswith("http://") or url.startswith("https://")):
+            return {"ok": False, "detail": "Webhook URL Zalo không hợp lệ."}
+    return {"ok": True, "detail": "Định dạng Webhook Zalo hợp lệ."}
+
+@app.get("/api/setup/openclaw/status")
+async def test_openclaw_status(
+    setup_user: dict = Depends(require_setup_access),
+):
+    return openclaw_config_service.get_status()
+
+@app.get("/api/setup/tailscale/status")
+async def test_tailscale_status(
+    setup_user: dict = Depends(require_setup_access),
+):
+    tailscale_info = {"installed": False, "running": False, "ip": "", "detail": "Not installed"}
+    try:
+        res = subprocess.run(["tailscale", "status", "--json"], capture_output=True, text=True, timeout=2)
+        if res.returncode == 0:
+            ts_data = json.loads(res.stdout)
+            tailscale_info["installed"] = True
+            tailscale_info["running"] = ts_data.get("BackendState") == "Running"
+            tailscale_info["ip"] = (ts_data.get("TailscaleIPs") or [""])[0]
+            tailscale_info["detail"] = f"BackendState: {ts_data.get('BackendState')}"
+        else:
+            tailscale_info["detail"] = "Tailscale service error"
+    except Exception as e:
+        tailscale_info["detail"] = str(e)
+    return tailscale_info
+
 @app.get("/api/system/config")
 async def get_config(current_user: dict = Depends(auth_utils.require_admin)):
-    env_path = BASE_DIR / ".env"
+    public_config = config_service.get_public_config()
     configs = []
-    if env_path.exists():
-        with open(env_path, "r") as f:
-            for line in f:
-                if line.strip() and not line.startswith("#") and "=" in line:
-                    key, val = line.split("=", 1)
-                    configs.append({"key": key.strip(), "value": val.strip().strip("'").strip('"')})
-    return {"configs": configs}
+    for category, fields in public_config.items():
+        if not isinstance(fields, dict):
+            continue
+        for key, value in fields.items():
+            is_secret = isinstance(value, dict) and "configured" in value
+            configs.append({
+                "key": f"{category}.{key}",
+                "value": "" if is_secret else value,
+                "secret": is_secret,
+                "configured": bool(value.get("configured")) if is_secret else None,
+            })
+    return {"configs": configs, "deprecated": True}
 
 @app.post("/api/system/config")
 async def update_config(payload: dict, current_user: dict = Depends(auth_utils.require_admin)):
-    env_path = BASE_DIR / ".env"
-    lines = []
-    if env_path.exists():
-        with open(env_path, "r") as f:
-            lines = f.readlines()
-
-    updated = False
-    for i, line in enumerate(lines):
-        if line.strip() and not line.startswith("#") and "=" in line:
-            key, _ = line.split("=", 1)
-            key = key.strip()
-            if key in payload:
-                lines[i] = f"{key}={payload[key]}\n"
-                updated = True
-                del payload[key]
-
-    # Add remaining new keys
-    for key, val in payload.items():
-        if key != "x_knx_token":
-            lines.append(f"{key}={val}\n")
-            updated = True
-
-    with open(env_path, "w") as f:
-        f.writelines(lines)
-
-    # Reload environment variables into python process
-    from dotenv import load_dotenv
-    load_dotenv(override=True)
-
-    return {"ok": True, "message": "Configuration updated successfully"}
+    grouped: dict[str, dict[str, Any]] = {}
+    raw_config = config_service.load_raw_config()
+    for dotted_key, value in payload.items():
+        if "." not in dotted_key:
+            continue
+        category, key = dotted_key.split(".", 1)
+        if category in raw_config and key in raw_config[category]:
+            grouped.setdefault(category, {})[key] = value
+    for category, category_data in grouped.items():
+        config_service.update_category_config(category, category_data)
+    return {"ok": True, "message": "Configuration updated via ConfigService", "deprecated": True}
 
 from fastapi.responses import FileResponse
 import zipfile
@@ -4297,8 +4539,8 @@ async def api_device_proposals_apply(
 
         # Call tools/apply_device_proposal.py via subprocess to reuse all validation/backup logic
         cmd = [
-            "/home/an/knx-bridge/.venv/bin/python",
-            "/home/an/knx-bridge/tools/apply_device_proposal.py",
+            str(BASE_DIR / ".venv" / "bin" / "python"),
+            str(BASE_DIR / "tools" / "apply_device_proposal.py"),
             str(resolved_path)
         ]
         if req.confirm:

@@ -15,7 +15,7 @@ sessions/
 
 # Logs / temp / backups
 *.log
-logs/
+/logs/
 backups/
 tmp_knxproj/
 *.pid
@@ -35,3 +35,14 @@ frontend/node_modules/
 frontend/*.pid
 frontend/*.log
 scenes.json
+
+# Local runtime configuration
+config.json
+config.json.bak
+
+# Security rules
+scratch/
+*_api_keys*
+*credentials*
+private-config.json
+legacy-sources/

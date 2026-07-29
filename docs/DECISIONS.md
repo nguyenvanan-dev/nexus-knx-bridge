@@ -6,7 +6,7 @@ This document tracks significant architectural and engineering decisions to prev
 - **Context:** Previously, the bot used display names ("Hai Lúa", "Boss An") and `IDENTITY.md` prompts to determine user privileges.
 - **Decision:** Remove all prompt-based authorization. Implement Application-Layer RBAC using immutable platform IDs.
 - **Why:** Display names are mutable. AI hallucinations and prompt injections compromise security.
-- **Implementation:** `ownerAllowFrom` in `~/.openclaw/openclaw.json` maps Telegram ID `1504699142` and Zalo ID `a883cba5f1ed18b341fc` to `role: owner`.
+- **Implementation:** `ownerAllowFrom` in `~/.openclaw/openclaw.json` maps Telegram ID `<TELEGRAM_OWNER_ID>` and Zalo ID `<ZALO_OWNER_ID>` to `role: owner`.
 - **Status:** Implemented and Verified.
 
 ## Decision 2: Unify Databases

@@ -26,7 +26,7 @@ EXTRACTED = KNOWLEDGE / "extracted"
 SUMMARIES = KNOWLEDGE / "summaries"
 REVIEW = KNOWLEDGE / "review"
 
-DB_PATH = Path.home() / "knx-bridge" / "smarthome.db"
+DB_PATH = Path(os.getenv("DB_PATH", str(Path(__file__).resolve().parent.parent / "smarthome.db")))
 
 
 def now_stamp():

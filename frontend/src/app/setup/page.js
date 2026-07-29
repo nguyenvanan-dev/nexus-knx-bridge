@@ -1,0 +1,838 @@
+'use client';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { showToast, showDialog } from '../../utils/ui';
+
+export default function SetupWizardPage() {
+  const router = useRouter();
+  const [step, setStep] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState(null);
+  const [bootstrapToken, setBootstrapToken] = useState('');
+
+  // Password / Secret toggles
+  const [showSecrets, setShowSecrets] = useState({});
+
+  // Setup state
+  const [status, setStatus] = useState(null);
+  const [integrations, setIntegrations] = useState(null);
+
+  // Form states
+  const [systemForm, setSystemForm] = useState({
+    installation_name: 'KNX Smart Home',
+    timezone: 'Asia/Ho_Chi_Minh',
+    language: 'vi'
+  });
+
+  const [adminForm, setAdminForm] = useState({
+    username: 'admin',
+    password: '',
+    confirm_password: ''
+  });
+
+  const [knxForm, setKnxForm] = useState({
+    gateway_host: '127.0.0.1',
+    gateway_port: 3671,
+    connection_type: 'TUNNELING',
+    individual_address: '1.1.250'
+  });
+
+  const [aiForm, setAiForm] = useState({
+    provider: 'openai',
+    model: 'gpt-4o-mini',
+    base_url: 'https://api.openai.com/v1',
+    api_key: ''
+  });
+
+  const [openclawForm, setOpenclawForm] = useState({
+    enabled: false,
+    runtime_path: '',
+    workspace_path: ''
+  });
+
+  const [telegramForm, setTelegramForm] = useState({
+    enabled: false,
+    bot_token: '',
+    chat_id: ''
+  });
+
+  const [zaloForm, setZaloForm] = useState({
+    enabled: false,
+    webhook_url: '',
+    integration_mode: 'webhook'
+  });
+
+  useEffect(() => {
+    loadSetupStatus();
+  }, []);
+
+  const loadSetupStatus = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/setup/status');
+      const data = await res.json();
+      setStatus(data);
+      if (data.config) {
+        if (data.config.system) setSystemForm(prev => ({ ...prev, ...data.config.system }));
+        if (data.config.knx) setKnxForm(prev => ({ ...prev, ...data.config.knx }));
+        if (data.config.ai) setAiForm(prev => ({ ...prev, ...data.config.ai, api_key: '' }));
+        if (data.config.telegram) setTelegramForm(prev => ({ ...prev, ...data.config.telegram, bot_token: '' }));
+        if (data.config.zalo) setZaloForm(prev => ({ ...prev, ...data.config.zalo, webhook_url: '' }));
+        if (data.config.openclaw) setOpenclawForm(prev => ({ ...prev, ...data.config.openclaw }));
+      }
+
+      const intRes = await fetch('/api/system/integrations');
+      const intData = await intRes.json();
+      setIntegrations(intData);
+    } catch (e) {
+      showToast(`Không thể tải trạng thái setup: ${e.message}`, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleSecret = (field) => {
+    setShowSecrets(prev => ({ ...prev, [field]: !prev[field] }));
+  };
+
+  const setupHeaders = () => ({
+    'Content-Type': 'application/json',
+    ...(bootstrapToken ? { 'X-Setup-Token': bootstrapToken } : {})
+  });
+
+  const handleSaveStep = async (category, payload, nextStep = true) => {
+    setSaving(true);
+    setTestResult(null);
+    try {
+      const res = await fetch(`/api/setup/${category}`, {
+        method: 'POST',
+        headers: setupHeaders(),
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        showToast(`Đã lưu cấu hình ${category.toUpperCase()}`, 'success');
+        if (nextStep) setStep(prev => prev + 1);
+      } else {
+        showToast(data.detail || data.error || 'Lưu thất bại', 'error');
+      }
+    } catch (e) {
+      showToast(`Lỗi kết nối: ${e.message}`, 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCreateAdmin = async () => {
+    if (!adminForm.username || !adminForm.password) {
+      showToast('Vui lòng nhập đầy đủ Tên đăng nhập và Mật khẩu', 'warning');
+      return;
+    }
+    if (adminForm.password !== adminForm.confirm_password) {
+      showToast('Mật khẩu xác nhận không khớp', 'error');
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch('/api/setup/bootstrap-admin', {
+        method: 'POST',
+        headers: setupHeaders(),
+        body: JSON.stringify({
+          username: adminForm.username,
+          password: adminForm.password
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast('Tạo tài khoản quản trị thành công', 'success');
+        setStep(prev => prev + 1);
+      } else {
+        showToast(data.detail || 'Không thể tạo tài khoản', 'error');
+      }
+    } catch (e) {
+      showToast(`Lỗi: ${e.message}`, 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRunTest = async (testCategory, payload) => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const res = await fetch(`/api/setup/test/${testCategory}`, {
+        method: 'POST',
+        headers: setupHeaders(),
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      setTestResult(data);
+      if (data.ok) {
+        showToast('Kiểm tra cấu hình thành công', 'success');
+      } else {
+        showToast(data.detail || 'Kiểm tra thất bại', 'warning');
+      }
+    } catch (e) {
+      setTestResult({ ok: false, detail: e.message });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const handleFinishSetup = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch('/api/setup/complete', {
+        method: 'POST',
+        headers: setupHeaders()
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast('Hoàn tất thiết lập hệ thống thành công!', 'success');
+        router.push('/settings');
+      } else {
+        showToast(data.detail || 'Lỗi hoàn tất setup', 'error');
+      }
+    } catch (e) {
+      showToast(`Lỗi: ${e.message}`, 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh', color: '#e2e8f0' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '1.5rem', fontWeight: 600, marginBottom: '0.5rem' }}>KNX Bridge Setup Wizard</div>
+          <div style={{ color: '#94a3b8' }}>Đang khởi tạo cấu hình...</div>
+        </div>
+      </div>
+    );
+  }
+
+  const stepsList = [
+    { num: 1, title: 'Hệ thống' },
+    { num: 2, title: 'Tài khoản Admin' },
+    { num: 3, title: 'KNX Gateway' },
+    { num: 4, title: 'AI Provider' },
+    { num: 5, title: 'OpenClaw' },
+    { num: 6, title: 'Telegram' },
+    { num: 7, title: 'Zalo' },
+    { num: 8, title: 'Remote Access' },
+    { num: 9, title: 'Xem lại' },
+    { num: 10, title: 'Hoàn tất' }
+  ];
+
+  return (
+    <div style={{ maxWidth: '900px', margin: '0 auto', padding: '1.5rem 1rem' }}>
+      {/* Header */}
+      <div style={{ marginBottom: '2rem', textAlign: 'center' }}>
+        <h1 style={{ fontSize: '1.875rem', fontWeight: 700, color: '#f8fafc', marginBottom: '0.5rem' }}>
+          Hướng Dẫn Thiết Lập KNX Bridge
+        </h1>
+        <p style={{ color: '#94a3b8', fontSize: '0.95rem' }}>
+          Cấu hình nhanh các thành phần kết nối, tài khoản và tích hợp mở rộng
+        </p>
+      </div>
+
+      {/* Stepper Navigation */}
+      <div style={{ display: 'flex', overflowX: 'auto', gap: '0.5rem', marginBottom: '2rem', paddingBottom: '0.5rem', borderBottom: '1px solid #334155' }}>
+        {stepsList.map((s) => (
+          <button
+            key={s.num}
+            onClick={() => setStep(s.num)}
+            style={{
+              flex: '0 0 auto',
+              padding: '0.5rem 0.85rem',
+              borderRadius: '0.5rem',
+              fontSize: '0.85rem',
+              fontWeight: 500,
+              cursor: 'pointer',
+              border: 'none',
+              background: step === s.num ? '#3b82f6' : (step > s.num ? '#1e293b' : 'transparent'),
+              color: step === s.num ? '#ffffff' : (step > s.num ? '#60a5fa' : '#94a3b8')
+            }}
+          >
+            {s.num}. {s.title}
+          </button>
+        ))}
+      </div>
+
+      {/* Main Content Box */}
+      <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: '0.75rem', padding: '1.75rem', marginBottom: '1.5rem' }}>
+
+        {/* STEP 1: SYSTEM */}
+        {step === 1 && (
+          <div>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#f1f5f9', marginBottom: '1rem' }}>Step 1: Cấu hình Hệ thống Baseline</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {!status?.setup_complete && (
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Setup Bootstrap Token:</label>
+                  <input
+                    type={showSecrets.bootstrap_token ? 'text' : 'password'}
+                    value={bootstrapToken}
+                    onChange={e => setBootstrapToken(e.target.value)}
+                    autoComplete="off"
+                    style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => toggleSecret('bootstrap_token')}
+                    style={{ marginTop: '0.4rem', background: 'transparent', border: 'none', color: '#60a5fa', fontSize: '0.85rem', cursor: 'pointer' }}
+                  >
+                    {showSecrets.bootstrap_token ? 'Ẩn token' : 'Hiển thị token'}
+                  </button>
+                </div>
+              )}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Tên công trình / Hệ thống:</label>
+                <input
+                  type="text"
+                  value={systemForm.installation_name}
+                  onChange={e => setSystemForm({ ...systemForm, installation_name: e.target.value })}
+                  style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Múi giờ (Timezone):</label>
+                <input
+                  type="text"
+                  value={systemForm.timezone}
+                  onChange={e => setSystemForm({ ...systemForm, timezone: e.target.value })}
+                  style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Ngôn ngữ mặc định:</label>
+                <select
+                  value={systemForm.language}
+                  onChange={e => setSystemForm({ ...systemForm, language: e.target.value })}
+                  style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }}
+                >
+                  <option value="vi">Tiếng Việt</option>
+                  <option value="en">English</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 2: ADMIN ACCOUNT */}
+        {step === 2 && (
+          <div>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#f1f5f9', marginBottom: '1rem' }}>Step 2: Tài khoản Quản trị (Admin)</h2>
+            {status?.admin_exists ? (
+              <div style={{ padding: '1rem', background: '#064e3b', border: '1px solid #047857', borderRadius: '0.5rem', color: '#a7f3d0' }}>
+                ✓ Hệ thống đã có tài khoản Quản trị. Bạn có thể tạo thêm hoặc bấm <strong>Tiếp tục</strong>.
+              </div>
+            ) : (
+              <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: '1rem' }}>Tạo tài khoản quản trị ban đầu để đăng nhập và điều khiển KNX Bridge.</p>
+            )}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Tên đăng nhập:</label>
+                <input
+                  type="text"
+                  value={adminForm.username}
+                  onChange={e => setAdminForm({ ...adminForm, username: e.target.value })}
+                  style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Mật khẩu:</label>
+                <input
+                  type={showSecrets.admin_pwd ? 'text' : 'password'}
+                  value={adminForm.password}
+                  onChange={e => setAdminForm({ ...adminForm, password: e.target.value })}
+                  style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Xác nhận mật khẩu:</label>
+                <input
+                  type={showSecrets.admin_pwd ? 'text' : 'password'}
+                  value={adminForm.confirm_password}
+                  onChange={e => setAdminForm({ ...adminForm, confirm_password: e.target.value })}
+                  style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => toggleSecret('admin_pwd')}
+                style={{ alignSelf: 'flex-start', background: 'transparent', border: 'none', color: '#60a5fa', fontSize: '0.85rem', cursor: 'pointer' }}
+              >
+                {showSecrets.admin_pwd ? '🔒 Ẩn mật khẩu' : '👁️ Hiển thị mật khẩu'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 3: KNX GATEWAY */}
+        {step === 3 && (
+          <div>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#f1f5f9', marginBottom: '1rem' }}>Step 3: Kết Nối KNX Gateway</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Gateway Host / IP:</label>
+                <input
+                  type="text"
+                  value={knxForm.gateway_host}
+                  onChange={e => setKnxForm({ ...knxForm, gateway_host: e.target.value })}
+                  style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Gateway Port (mặc định 3671):</label>
+                <input
+                  type="number"
+                  value={knxForm.gateway_port}
+                  onChange={e => setKnxForm({ ...knxForm, gateway_port: parseInt(e.target.value) || 3671 })}
+                  style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Kiểu kết nối:</label>
+                <select
+                  value={knxForm.connection_type}
+                  onChange={e => setKnxForm({ ...knxForm, connection_type: e.target.value })}
+                  style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }}
+                >
+                  <option value="TUNNELING">TUNNELING</option>
+                  <option value="ROUTING">ROUTING</option>
+                  <option value="AUTOMATIC">AUTOMATIC</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Địa chỉ cá nhân (Individual Address):</label>
+                <input
+                  type="text"
+                  value={knxForm.individual_address}
+                  onChange={e => setKnxForm({ ...knxForm, individual_address: e.target.value })}
+                  style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }}
+                />
+              </div>
+
+              <div style={{ marginTop: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={() => handleRunTest('knx', knxForm)}
+                  disabled={testing}
+                  style={{ padding: '0.5rem 1rem', background: '#334155', color: '#f8fafc', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontSize: '0.875rem' }}
+                >
+                  {testing ? 'Đang kiểm tra...' : '🔍 Validate Configuration (No KNX Telegram Write)'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 4: AI PROVIDER */}
+        {step === 4 && (
+          <div>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#f1f5f9', marginBottom: '1rem' }}>Step 4: AI Provider / LLM API</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>AI Provider:</label>
+                <select
+                  value={aiForm.provider}
+                  onChange={e => setAiForm({ ...aiForm, provider: e.target.value })}
+                  style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }}
+                >
+                  <option value="openai">OpenAI</option>
+                  <option value="anthropic">Anthropic</option>
+                  <option value="gemini">Google Gemini</option>
+                  <option value="custom">Custom / Ollama / Local</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Model:</label>
+                <input
+                  type="text"
+                  value={aiForm.model}
+                  onChange={e => setAiForm({ ...aiForm, model: e.target.value })}
+                  style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Base URL:</label>
+                <input
+                  type="text"
+                  value={aiForm.base_url}
+                  onChange={e => setAiForm({ ...aiForm, base_url: e.target.value })}
+                  style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>API Key:</label>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <input
+                    type={showSecrets.ai_key ? 'text' : 'password'}
+                    placeholder={status?.config?.ai?.api_key?.configured ? `Configured (...${status.config.ai.api_key.masked_hint})` : 'Nhập API Key mới'}
+                    value={aiForm.api_key}
+                    onChange={e => setAiForm({ ...aiForm, api_key: e.target.value })}
+                    style={{ flex: 1, padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => toggleSecret('ai_key')}
+                    style={{ padding: '0.6rem', background: '#334155', border: 'none', borderRadius: '0.375rem', color: '#f8fafc', cursor: 'pointer' }}
+                  >
+                    {showSecrets.ai_key ? 'Ẩn' : 'Hiện'}
+                  </button>
+                  {status?.config?.ai?.api_key?.configured && (
+                    <button
+                      type="button"
+                      onClick={() => setAiForm({ ...aiForm, api_key: '__CLEAR__' })}
+                      style={{ padding: '0.6rem', background: '#991b1b', border: 'none', borderRadius: '0.375rem', color: '#f8fafc', cursor: 'pointer' }}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ marginTop: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={() => handleRunTest('ai', aiForm)}
+                  disabled={testing}
+                  style={{ padding: '0.5rem 1rem', background: '#334155', color: '#f8fafc', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontSize: '0.875rem' }}
+                >
+                  {testing ? 'Đang kiểm tra...' : '🔍 Validate Configuration (No API Calls Made)'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 5: OPENCLAW */}
+        {step === 5 && (
+          <div>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#f1f5f9', marginBottom: '1rem' }}>Step 5: Tích Hợp OpenClaw Runtime</h2>
+            {integrations?.openclaw && (
+              <div style={{ background: '#1e293b', padding: '1rem', borderRadius: '0.5rem', marginBottom: '1rem', fontSize: '0.875rem' }}>
+                <div><strong>Runtime Installed:</strong> {integrations.openclaw.runtime_installed ? '✓ Yes' : '✗ No'}</div>
+                <div><strong>Executable:</strong> {integrations.openclaw.executable_path || 'None'}</div>
+                <div><strong>9router Service:</strong> {integrations.openclaw.service_status}</div>
+                <div><strong>Workspace:</strong> {integrations.openclaw.workspace_path}</div>
+                <div><strong>Skill Symlink Valid:</strong> {integrations.openclaw.skills_symlink_valid ? '✓ Valid' : '⚠ Link Missing/Outdated'}</div>
+              </div>
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#f8fafc', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={openclawForm.enabled}
+                  onChange={e => setOpenclawForm({ ...openclawForm, enabled: e.target.checked })}
+                />
+                Kích hoạt tích hợp OpenClaw
+              </label>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 6: TELEGRAM */}
+        {step === 6 && (
+          <div>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#f1f5f9', marginBottom: '1rem' }}>Step 6: Tích Hợp Telegram Notification</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#f8fafc', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={telegramForm.enabled}
+                  onChange={e => setTelegramForm({ ...telegramForm, enabled: e.target.checked })}
+                />
+                Kích hoạt Telegram Notification
+              </label>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Bot Token:</label>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <input
+                    type={showSecrets.tg_token ? 'text' : 'password'}
+                    placeholder={status?.config?.telegram?.bot_token?.configured ? `Configured (...${status.config.telegram.bot_token.masked_hint})` : 'Nhập Bot Token (ví dụ: 123456:ABC...)'}
+                    value={telegramForm.bot_token}
+                    onChange={e => setTelegramForm({ ...telegramForm, bot_token: e.target.value })}
+                    style={{ flex: 1, padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => toggleSecret('tg_token')}
+                    style={{ padding: '0.6rem', background: '#334155', border: 'none', borderRadius: '0.375rem', color: '#f8fafc', cursor: 'pointer' }}
+                  >
+                    {showSecrets.tg_token ? 'Ẩn' : 'Hiện'}
+                  </button>
+                  {status?.config?.telegram?.bot_token?.configured && (
+                    <button
+                      type="button"
+                      onClick={() => setTelegramForm({ ...telegramForm, bot_token: '__CLEAR__' })}
+                      style={{ padding: '0.6rem', background: '#991b1b', border: 'none', borderRadius: '0.375rem', color: '#f8fafc', cursor: 'pointer' }}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Default Chat ID:</label>
+                <input
+                  type="text"
+                  value={telegramForm.chat_id}
+                  onChange={e => setTelegramForm({ ...telegramForm, chat_id: e.target.value })}
+                  style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }}
+                />
+              </div>
+
+              <div style={{ marginTop: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={() => handleRunTest('telegram', telegramForm)}
+                  disabled={testing}
+                  style={{ padding: '0.5rem 1rem', background: '#334155', color: '#f8fafc', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontSize: '0.875rem' }}
+                >
+                  {testing ? 'Đang kiểm tra...' : '🔍 Validate Configuration (No Messages Sent)'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 7: ZALO */}
+        {step === 7 && (
+          <div>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#f1f5f9', marginBottom: '1rem' }}>Step 7: Tích Hợp Zalo Notification / Webhook</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#f8fafc', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={zaloForm.enabled}
+                  onChange={e => setZaloForm({ ...zaloForm, enabled: e.target.checked })}
+                />
+                Kích hoạt Zalo Webhook / Integration
+              </label>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Zalo Webhook URL:</label>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <input
+                    type={showSecrets.zalo_url ? 'text' : 'password'}
+                    placeholder={status?.config?.zalo?.webhook_url?.configured ? `Configured (...${status.config.zalo.webhook_url.masked_hint})` : 'Nhập Webhook URL'}
+                    value={zaloForm.webhook_url}
+                    onChange={e => setZaloForm({ ...zaloForm, webhook_url: e.target.value })}
+                    style={{ flex: 1, padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => toggleSecret('zalo_url')}
+                    style={{ padding: '0.6rem', background: '#334155', border: 'none', borderRadius: '0.375rem', color: '#f8fafc', cursor: 'pointer' }}
+                  >
+                    {showSecrets.zalo_url ? 'Ẩn' : 'Hiện'}
+                  </button>
+                  {status?.config?.zalo?.webhook_url?.configured && (
+                    <button
+                      type="button"
+                      onClick={() => setZaloForm({ ...zaloForm, webhook_url: '__CLEAR__' })}
+                      style={{ padding: '0.6rem', background: '#991b1b', border: 'none', borderRadius: '0.375rem', color: '#f8fafc', cursor: 'pointer' }}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ marginTop: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={() => handleRunTest('zalo', zaloForm)}
+                  disabled={testing}
+                  style={{ padding: '0.5rem 1rem', background: '#334155', color: '#f8fafc', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontSize: '0.875rem' }}
+                >
+                  {testing ? 'Đang kiểm tra...' : '🔍 Validate Configuration (No Real Webhook Sent)'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 8: REMOTE ACCESS */}
+        {step === 8 && (
+          <div>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#f1f5f9', marginBottom: '1rem' }}>Step 8: Remote Access (Tailscale Status)</h2>
+            {integrations?.tailscale && (
+              <div style={{ background: '#1e293b', padding: '1.25rem', borderRadius: '0.5rem', color: '#f8fafc' }}>
+                <div style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.5rem' }}>Tailscale VPN Status (Read-Only)</div>
+                <div style={{ fontSize: '0.875rem', display: 'flex', flexDirection: 'column', gap: '0.4rem', color: '#cbd5e1' }}>
+                  <div>Installed: <strong>{integrations.tailscale.installed ? '✓ Yes' : '✗ No'}</strong></div>
+                  <div>Running: <strong>{integrations.tailscale.running ? '✓ Active' : 'Inactive'}</strong></div>
+                  <div>Tailscale IP: <strong style={{ color: '#60a5fa' }}>{integrations.tailscale.ip || 'N/A'}</strong></div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* STEP 9: REVIEW */}
+        {step === 9 && (
+          <div>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#f1f5f9', marginBottom: '1rem' }}>Step 9: Xem Lại Toàn Bộ Cấu Hình</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', fontSize: '0.875rem', color: '#cbd5e1' }}>
+              <div style={{ background: '#1e293b', padding: '0.8rem', borderRadius: '0.375rem' }}>
+                <strong>Hệ thống:</strong> {systemForm.installation_name} ({systemForm.timezone})
+              </div>
+              <div style={{ background: '#1e293b', padding: '0.8rem', borderRadius: '0.375rem' }}>
+                <strong>KNX Gateway:</strong> {knxForm.gateway_host}:{knxForm.gateway_port} ({knxForm.connection_type})
+              </div>
+              <div style={{ background: '#1e293b', padding: '0.8rem', borderRadius: '0.375rem' }}>
+                <strong>AI Provider:</strong> {aiForm.provider} - {aiForm.model} ({status?.config?.ai?.api_key?.configured || aiForm.api_key ? '✓ Key Configured' : 'No Key'})
+              </div>
+              <div style={{ background: '#1e293b', padding: '0.8rem', borderRadius: '0.375rem' }}>
+                <strong>OpenClaw:</strong> {openclawForm.enabled ? '✓ Enabled' : 'Disabled'}
+              </div>
+              <div style={{ background: '#1e293b', padding: '0.8rem', borderRadius: '0.375rem' }}>
+                <strong>Telegram:</strong> {telegramForm.enabled ? '✓ Enabled' : 'Disabled'}
+              </div>
+              <div style={{ background: '#1e293b', padding: '0.8rem', borderRadius: '0.375rem' }}>
+                <strong>Zalo:</strong> {zaloForm.enabled ? '✓ Enabled' : 'Disabled'}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 10: COMPLETE */}
+        {step === 10 && (
+          <div style={{ textAlign: 'center', padding: '1rem 0' }}>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 700, color: '#4ade80', marginBottom: '0.5rem' }}>
+              🎉 Tất Cả Đã Sẵn Sàng!
+            </h2>
+            <p style={{ color: '#94a3b8', marginBottom: '1.5rem' }}>
+              Bấm nút bên dưới để hoàn tất cài đặt và chuyển đến Bảng Quản Trị Hệ Thống.
+            </p>
+            <button
+              type="button"
+              onClick={handleFinishSetup}
+              disabled={saving}
+              style={{ padding: '0.75rem 2rem', background: '#16a34a', color: '#ffffff', border: 'none', borderRadius: '0.5rem', fontSize: '1rem', fontWeight: 600, cursor: 'pointer' }}
+            >
+              {saving ? 'Đang hoàn tất...' : 'Hoàn Tất & Khóa Setup Wizard'}
+            </button>
+          </div>
+        )}
+
+        {/* Test Result Display Box */}
+        {testResult && (
+          <div style={{ marginTop: '1rem', padding: '0.8rem', borderRadius: '0.375rem', background: testResult.ok ? '#064e3b' : '#7f1d1d', color: testResult.ok ? '#a7f3d0' : '#fecaca', fontSize: '0.875rem' }}>
+            {testResult.ok ? '✓ Success: ' : '✗ Error: '} {testResult.detail}
+          </div>
+        )}
+      </div>
+
+      {/* Footer Stepper Controls */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <button
+          type="button"
+          disabled={step === 1 || saving}
+          onClick={() => setStep(prev => Math.max(1, prev - 1))}
+          style={{ padding: '0.6rem 1.25rem', background: '#1e293b', color: '#94a3b8', border: '1px solid #334155', borderRadius: '0.375rem', cursor: 'pointer' }}
+        >
+          ← Quay lại
+        </button>
+
+        {step < 10 && (
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            {step === 1 && (
+              <button
+                type="button"
+                onClick={() => handleSaveStep('system', systemForm)}
+                disabled={saving}
+                style={{ padding: '0.6rem 1.5rem', background: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontWeight: 600 }}
+              >
+                Lưu & Tiếp theo →
+              </button>
+            )}
+            {step === 2 && (
+              <button
+                type="button"
+                onClick={status?.admin_exists ? () => setStep(prev => prev + 1) : handleCreateAdmin}
+                disabled={saving}
+                style={{ padding: '0.6rem 1.5rem', background: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontWeight: 600 }}
+              >
+                {status?.admin_exists ? 'Tiếp theo →' : 'Tạo Admin & Tiếp theo →'}
+              </button>
+            )}
+            {step === 3 && (
+              <button
+                type="button"
+                onClick={() => handleSaveStep('knx', knxForm)}
+                disabled={saving}
+                style={{ padding: '0.6rem 1.5rem', background: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontWeight: 600 }}
+              >
+                Lưu & Tiếp theo →
+              </button>
+            )}
+            {step === 4 && (
+              <button
+                type="button"
+                onClick={() => handleSaveStep('ai', aiForm)}
+                disabled={saving}
+                style={{ padding: '0.6rem 1.5rem', background: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontWeight: 600 }}
+              >
+                Lưu & Tiếp theo →
+              </button>
+            )}
+            {step === 5 && (
+              <button
+                type="button"
+                onClick={() => handleSaveStep('openclaw', openclawForm)}
+                disabled={saving}
+                style={{ padding: '0.6rem 1.5rem', background: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontWeight: 600 }}
+              >
+                Lưu & Tiếp theo →
+              </button>
+            )}
+            {step === 6 && (
+              <button
+                type="button"
+                onClick={() => handleSaveStep('telegram', telegramForm)}
+                disabled={saving}
+                style={{ padding: '0.6rem 1.5rem', background: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontWeight: 600 }}
+              >
+                Lưu & Tiếp theo →
+              </button>
+            )}
+            {step === 7 && (
+              <button
+                type="button"
+                onClick={() => handleSaveStep('zalo', zaloForm)}
+                disabled={saving}
+                style={{ padding: '0.6rem 1.5rem', background: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontWeight: 600 }}
+              >
+                Lưu & Tiếp theo →
+              </button>
+            )}
+            {step === 8 && (
+              <button
+                type="button"
+                onClick={() => setStep(prev => prev + 1)}
+                style={{ padding: '0.6rem 1.5rem', background: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontWeight: 600 }}
+              >
+                Tiếp theo →
+              </button>
+            )}
+            {step === 9 && (
+              <button
+                type="button"
+                onClick={() => setStep(10)}
+                style={{ padding: '0.6rem 1.5rem', background: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontWeight: 600 }}
+              >
+                Xác nhận & Đi đến bước Hoàn tất →
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

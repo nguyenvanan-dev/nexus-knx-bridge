@@ -1,47 +1,104 @@
-from jose import JWTError, jwt
-from datetime import datetime, timedelta
-from fastapi import HTTPException, status, Depends
-from fastapi.security import OAuth2PasswordBearer
-from typing import Optional
-import sqlite3
 import os
+import sqlite3
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Optional
 
-# Secret key for JWT (in production, read from env)
-SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "knx_bridge_super_secret_key_2026")
+import bcrypt
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
+from jose import JWTError, jwt
+
+
+PROJECT_DIR = Path(__file__).resolve().parent
+DEFAULT_DB_PATH = PROJECT_DIR / "smarthome.db"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # 7 days
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
-import bcrypt
 
-def verify_password(plain_password, hashed_password):
-    pwd_bytes = plain_password.encode('utf-8')
-    hash_bytes = hashed_password.encode('utf-8')
-    return bcrypt.checkpw(pwd_bytes, hash_bytes)
+def _jwt_secret() -> str:
+    secret = os.getenv("JWT_SECRET_KEY", "").strip()
+    if not secret:
+        raise RuntimeError("JWT_SECRET_KEY is not configured")
+    return secret
 
-def get_password_hash(password):
-    salt = bcrypt.gensalt()
-    pwd_bytes = password.encode('utf-8')
-    return bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return bcrypt.checkpw(
+        plain_password.encode("utf-8"),
+        hashed_password.encode("utf-8"),
+    )
+
+
+def get_password_hash(password: str) -> str:
+    return bcrypt.hashpw(
+        password.encode("utf-8"),
+        bcrypt.gensalt(),
+    ).decode("utf-8")
+
+
+def create_access_token(
+    data: dict,
+    expires_delta: Optional[timedelta] = None,
+) -> str:
     to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
+    expire = datetime.now(timezone.utc) + (
+        expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+    to_encode["exp"] = expire
+    return jwt.encode(to_encode, _jwt_secret(), algorithm=ALGORITHM)
 
-def get_db_connection():
-    conn = sqlite3.connect('smarthome.db')
+
+def get_db_connection(db_path: Optional[str | Path] = None):
+    configured_path = os.getenv("SMARTHOME_DB_PATH", "").strip()
+    resolved_path = Path(db_path or configured_path or DEFAULT_DB_PATH)
+    conn = sqlite3.connect(str(resolved_path))
     conn.row_factory = sqlite3.Row
     return conn
 
+
 async def get_current_user(token: str = Depends(oauth2_scheme)):
-    return {"username": "admin", "role": "Admin"}
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, _jwt_secret(), algorithms=[ALGORITHM])
+        username = payload.get("sub") or payload.get("username")
+        if not username:
+            raise credentials_exception
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc),
+        ) from exc
+    except JWTError as exc:
+        raise credentials_exception from exc
+
+    try:
+        with get_db_connection() as conn:
+            row = conn.execute(
+                "SELECT id, username, role FROM users WHERE username = ?",
+                (username,),
+            ).fetchone()
+    except sqlite3.Error as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Authentication database is unavailable",
+        ) from exc
+
+    if row is None:
+        raise credentials_exception
+    return dict(row)
+
 
 async def require_admin(current_user: dict = Depends(get_current_user)):
-    return {"username": "admin", "role": "Admin"}
+    if str(current_user.get("role", "")).lower() != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin privileges required",
+        )
+    return current_user

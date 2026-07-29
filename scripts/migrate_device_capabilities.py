@@ -1,10 +1,11 @@
+from pathlib import Path
 import sqlite3
 import shutil
 import time
 import os
 import argparse
 
-DB_PATH = '/home/an/knx-bridge/smarthome.db'
+DB_PATH = os.getenv('DB_PATH', str(Path(__file__).resolve().parent.parent / 'smarthome.db'))
 if not os.path.exists(DB_PATH):
     DB_PATH = 'smarthome.db'
 

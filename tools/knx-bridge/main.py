@@ -17,7 +17,7 @@ def main():
     try:
         response = requests.post(
             "http://127.0.0.1:5055/agent/command",
-            headers={"Content-Type": "application/json", "x-knx-token": "REMOVED_CREDENTIAL"},
+            headers={"Content-Type": "application/json", "x-knx-token": os.getenv("KNX_API_TOKEN", "")},
             json={"user_id": "zalo_agent", "text": command_text},
             timeout=10
         )

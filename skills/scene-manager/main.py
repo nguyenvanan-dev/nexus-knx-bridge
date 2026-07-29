@@ -1,9 +1,10 @@
+from pathlib import Path
 import sqlite3
 import json
 import sys
 import os
 
-DB_PATH = "/home/an/knx-bridge/smarthome.db"
+DB_PATH = os.getenv("DB_PATH", str(Path(__file__).resolve().parent.parent.parent / "smarthome.db"))
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
