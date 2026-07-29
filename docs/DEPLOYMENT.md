@@ -1,39 +1,72 @@
-# Deployment Status and Guide
+# Deployment Guide
 
-## 1. Environment Details
-- **Target Hardware:** Raspberry Pi (ARM64)
-- **OS:** Ubuntu
-- **IP Address:** `10.1.10.105`
-- **Application Path:** `/home/an/knx-bridge`
-- **Python Environment:** `.venv` (Python 3.12)
+## Supported Target
 
-## 2. Services
-### knx-bridge.service
-- **Role:** Core FastAPI Backend.
-- **Port:** `0.0.0.0:5055`
-- **Status:** **Active (Running)**. The previous issue with orphaned `uvicorn` processes blocking the port was resolved.
-- **Verification:** `curl http://localhost:5055/health` returns `status: ok` (13 devices).
+- Ubuntu, Debian or Raspberry Pi OS on ARM64/x86_64
+- Python 3.10+
+- Node.js 18+
+- KNX/IP gateway for physical control
+- OpenClaw and 9router when AI/chat integrations are enabled
 
-### openclaw-gateway.service
-- **Role:** AI Orchestration.
-- **Status:** Currently running manually as a background process (PID `8661`).
-- **TODO:** Needs to be daemonized into a proper `systemd` unit for reboot resilience.
+The repository can be installed in any directory. Commands below assume the
+current shell is already inside the cloned repository.
 
-## 3. Rollback Procedure
-If the current deployment fails catastrophically, use the following rollback plan:
+## Install
 
-- **Latest Deployment:** `24b0a7b` (Phase D, current master).
-- **Last Stable:** `7102b68` (Final production hardening pass).
-
-**Commands:**
 ```bash
-cd /home/an/knx-bridge
-git checkout 7102b68
-sudo systemctl restart knx-bridge
+./install.sh --check-only
+./install.sh
+systemctl --user enable --now knx-bridge.service knx-frontend.service
+./check_installation.sh
 ```
 
-**Verification post-rollback:**
+Open `http://<server-ip>:3000/setup` and complete the Setup Wizard. Retrieve the
+first-run bootstrap token locally with:
+
 ```bash
-systemctl status knx-bridge
-curl http://127.0.0.1:5055/health
+grep '^SETUP_BOOTSTRAP_TOKEN=' .env
 ```
+
+## Runtime Services
+
+- `knx-bridge.service`: FastAPI backend on port 5055
+- `knx-frontend.service`: Next.js frontend on port 3000
+- `9router.service`: optional AI provider gateway
+- OpenClaw gateway/runtime: optional, required for chat channel integrations
+
+The installer creates backend/frontend user services and refuses to create
+duplicates when system-level services already exist.
+
+## Verification
+
+```bash
+./check_installation.sh
+PYTHONPATH=. .venv/bin/python -m pytest tests/ -q
+(cd frontend && npm ci && npm run lint && npm run build)
+curl -I http://127.0.0.1:3000/
+curl http://127.0.0.1:5055/api/setup/status
+```
+
+## Upgrade
+
+1. Create a system backup from the administration UI.
+2. Stop backend/frontend services.
+3. Pull the reviewed release.
+4. Install Python and frontend dependencies.
+5. Run migrations only when the release notes explicitly require them.
+6. Build frontend, run tests, then restart backend/frontend.
+
+Do not reset or replace runtime `.env`, `config.json`, SQLite databases or
+OpenClaw credentials during an upgrade.
+
+## Rollback
+
+Roll back to a known reviewed tag or commit rather than a hardcoded hash:
+
+```bash
+git log --oneline --decorate -20
+git switch --detach <known-good-tag-or-commit>
+systemctl --user restart knx-bridge.service knx-frontend.service
+```
+
+Restore a database backup only after confirming schema compatibility.

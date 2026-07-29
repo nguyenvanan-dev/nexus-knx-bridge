@@ -52,8 +52,9 @@ Setup Wizard hỗ trợ 10 bước cấu hình trực quan:
 5. **OpenClaw Integration:** Runtime, workspace, provider/model, skill symlink,
    trạng thái 9router và credential riêng cho skill/plugin.
 6. **Telegram Notification:** Bot Token, Chat ID, allow-list và trạng thái pairing.
-7. **Zalo Integration:** Bot token, webhook URL, webhook secret, allow-list và
-   trạng thái pairing.
+7. **Zalo Integration:** Zalo Bot token/webhook/allow-list và Zalo Personal
+   QR login, trạng thái runtime, lựa chọn group, giới hạn lịch sử và chế độ chỉ
+   phản hồi khi được nhắc tên.
 8. **Remote Access:** Kiểm tra trạng thái Tailscale VPN (Read-only).
 9. **Review & Summary:** Khái quát toàn bộ cấu hình trước khi lưu.
 10. **Complete:** Kiểm tra các trường bắt buộc, lưu cấu hình và thông báo service cần restart.

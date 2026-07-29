@@ -1,7 +1,7 @@
 # OpenClaw Skill Allowlist Configuration
 
-- Canonical skill path: `/home/an/knx-bridge/skills`
-- Runtime symlink: `/home/an/.openclaw/workspace/skills`
+- Canonical skill path: `<project-directory>/skills`
+- Runtime symlink: `$HOME/.openclaw/workspace/skills`
 
 ## Agent production allowlist
 

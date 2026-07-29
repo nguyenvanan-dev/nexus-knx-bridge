@@ -5,8 +5,8 @@ Tài liệu chi tiết cơ chế tích hợp giữa KNX Bridge và OpenClaw Engi
 ## 1. Kiến Trúc Symlink Single Source of Truth
  đảm bảo tất cả AI Skills được đồng bộ trực tiếp từ repository KNX Bridge sang workspace của OpenClaw mà không bị trùng lặp code, hệ thống duy trì đường liên kết symlink:
 
-```
-/home/an/.openclaw/workspace/skills  --->  /home/an/knx-bridge/skills
+```text
+$HOME/.openclaw/workspace/skills  --->  <project-directory>/skills
 ```
 
 Khi cập nhật cấu hình OpenClaw từ Setup Wizard hoặc backend service (`services/openclaw_config_service.py`), hệ thống tự động kiểm tra và khởi tạo symlink này.

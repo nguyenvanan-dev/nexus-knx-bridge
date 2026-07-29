@@ -17,6 +17,7 @@ live Telegram/Zalo delivery remain owner-operated acceptance tests.
 - Python 3.10 or newer
 - Node.js 18 or newer
 - KNX/IP gateway for physical operation
+- OpenClaw and 9router for AI/chat integrations (optional for KNX-only use)
 
 ## Install
 
@@ -45,7 +46,8 @@ credential vaults into issues or commits.
 - Secure ETS project parsing, review, dry-run, and controlled proposal apply
 - Dynamic AI providers with multiple models and masked credentials
 - OpenClaw runtime, workspace, skills, and skill credential management
-- Telegram and Zalo configuration, allow-lists, and pairing status
+- Telegram, Zalo Bot and Zalo Personal configuration, group allow-lists,
+  pairing/login status and history controls
 - Tailscale runtime status
 - Backup/restore administration and service diagnostics
 
