@@ -87,6 +87,16 @@ export default function SetupWizardPage() {
     integration_mode: 'webhook',
     allow_from: []
   });
+  const [zaloUserStatus, setZaloUserStatus] = useState(null);
+  const [zaloUserGroups, setZaloUserGroups] = useState([]);
+  const [zaloUserBusy, setZaloUserBusy] = useState(false);
+  const [zaloUserForm, setZaloUserForm] = useState({
+    enabled: false,
+    group_policy: 'allowlist',
+    group_ids: [],
+    history_limit: 50,
+    require_mention: true
+  });
   const [remoteForm, setRemoteForm] = useState({
     tailscale_enabled: false,
     tailscale_hostname: ''
@@ -98,6 +108,10 @@ export default function SetupWizardPage() {
 
   useEffect(() => {
     if (step >= 4) refreshIntegrations();
+  }, [step]);
+
+  useEffect(() => {
+    if (step === 7) loadZaloUserStatus(false);
   }, [step]);
 
   useEffect(() => {
@@ -153,6 +167,137 @@ export default function SetupWizardPage() {
       setIntegrations(data);
     } catch (error) {
       showToast(error.message, 'warning');
+    }
+  };
+
+  const loadZaloUserStatus = async (probe = false) => {
+    try {
+      const res = await fetch(
+        `/api/setup/zalouser/status${probe ? '?probe=true' : ''}`,
+        { headers: setupHeaders() }
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Không thể đọc trạng thái Zalo Personal');
+      setZaloUserStatus(data);
+      setZaloUserForm(prev => ({
+        ...prev,
+        enabled: Boolean(data.enabled),
+        group_policy: data.group_policy || 'allowlist',
+        group_ids: Array.isArray(data.groups) ? data.groups.map(item => item.id) : [],
+        history_limit: Number(data.history_limit ?? 50),
+        require_mention: Array.isArray(data.groups) && data.groups.length > 0
+          ? data.groups.every(item => item.require_mention !== false)
+          : prev.require_mention
+      }));
+      return data;
+    } catch (error) {
+      showToast(error.message, 'warning');
+      return null;
+    }
+  };
+
+  const loadZaloUserGroups = async () => {
+    setZaloUserBusy(true);
+    try {
+      const res = await fetch('/api/setup/zalouser/groups?limit=200', {
+        headers: setupHeaders()
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Không thể đọc danh sách group');
+      setZaloUserGroups(Array.isArray(data.groups) ? data.groups : []);
+      showToast(`Đã tải ${data.groups?.length || 0} group Zalo`, 'success');
+    } catch (error) {
+      showToast(error.message, 'error');
+    } finally {
+      setZaloUserBusy(false);
+    }
+  };
+
+  const saveZaloUserConfig = async (showSuccess = true) => {
+    const res = await fetch('/api/setup/zalouser/config', {
+      method: 'POST',
+      headers: setupHeaders(),
+      body: JSON.stringify(zaloUserForm)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Không thể lưu Zalo Personal');
+    await loadZaloUserStatus(false);
+    if (showSuccess) {
+      showToast('Đã lưu cấu hình Zalo Personal. Cần restart OpenClaw để áp dụng.', 'success');
+    }
+    return data;
+  };
+
+  const startZaloUserLogin = async () => {
+    setZaloUserBusy(true);
+    try {
+      const res = await fetch('/api/setup/zalouser/login/start', {
+        method: 'POST',
+        headers: setupHeaders(),
+        body: '{}'
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Không thể bắt đầu đăng nhập');
+      setZaloUserStatus(prev => ({ ...(prev || {}), login: data.login }));
+      for (let attempt = 0; attempt < 90; attempt += 1) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        const statusRes = await fetch('/api/setup/zalouser/login/status', {
+          headers: setupHeaders()
+        });
+        const statusData = await statusRes.json();
+        if (!statusRes.ok) throw new Error(statusData.detail || 'Mất phiên đăng nhập');
+        setZaloUserStatus(prev => ({ ...(prev || {}), login: statusData.login }));
+        if (['connected', 'error'].includes(statusData.login?.state)) {
+          await loadZaloUserStatus(true);
+          break;
+        }
+      }
+    } catch (error) {
+      showToast(error.message, 'error');
+    } finally {
+      setZaloUserBusy(false);
+    }
+  };
+
+  const logoutZaloUser = async () => {
+    if (!window.confirm('Đăng xuất tài khoản Zalo Personal hiện tại?')) return;
+    setZaloUserBusy(true);
+    try {
+      const res = await fetch('/api/setup/zalouser/logout', {
+        method: 'POST',
+        headers: setupHeaders(),
+        body: JSON.stringify({ confirm: true })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Không thể đăng xuất');
+      await loadZaloUserStatus(true);
+      showToast('Đã đăng xuất Zalo Personal', 'success');
+    } catch (error) {
+      showToast(error.message, 'error');
+    } finally {
+      setZaloUserBusy(false);
+    }
+  };
+
+  const handleSaveZaloStep = async () => {
+    setSaving(true);
+    try {
+      const botRes = await fetch('/api/setup/zalo', {
+        method: 'POST',
+        headers: setupHeaders(),
+        body: JSON.stringify(zaloForm)
+      });
+      const botData = await botRes.json();
+      if (!botRes.ok || !botData.ok) {
+        throw new Error(botData.detail || 'Không thể lưu Zalo Bot');
+      }
+      await saveZaloUserConfig(false);
+      showToast('Đã lưu cả Zalo Bot và Zalo Personal', 'success');
+      setStep(prev => prev + 1);
+    } catch (error) {
+      showToast(error.message, 'error');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -1024,6 +1169,198 @@ export default function SetupWizardPage() {
                 </button>
               </div>
             </div>
+
+            <div style={{
+              marginTop: '1.5rem',
+              padding: '1.25rem',
+              border: '1px solid #334155',
+              borderRadius: '0.75rem',
+              background: '#111827'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                <div>
+                  <h3 style={{ fontSize: '1.1rem', fontWeight: 650, color: '#f8fafc', margin: 0 }}>
+                    Zalo Personal Group Reader
+                  </h3>
+                  <p style={{ color: '#94a3b8', margin: '0.35rem 0 0', lineHeight: 1.5 }}>
+                    Tài khoản Zalo cá nhân dùng để đọc lịch sử, tóm tắt và phản hồi trong các group được chọn.
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: '0.65rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{
+                    color: zaloUserStatus?.credential_present ? '#34d399' : '#f87171',
+                    fontWeight: 600
+                  }}>
+                    ● {zaloUserStatus?.credential_present ? 'Đã đăng nhập' : 'Chưa đăng nhập'}
+                  </span>
+                  <span style={{
+                    color: zaloUserStatus?.probe?.running ? '#34d399' : '#94a3b8',
+                    fontWeight: 600
+                  }}>
+                    ● {zaloUserStatus?.probe?.running ? 'Đang chạy' : 'Chưa kiểm tra runtime'}
+                  </span>
+                </div>
+              </div>
+
+              <div style={{
+                marginTop: '1rem',
+                padding: '0.85rem 1rem',
+                borderRadius: '0.5rem',
+                border: '1px solid #713f12',
+                background: 'rgba(120, 53, 15, 0.18)',
+                color: '#fbbf24',
+                lineHeight: 1.5
+              }}>
+                Zalo Personal dùng cơ chế đăng nhập không chính thức. Chỉ dùng tài khoản phụ và giới hạn group để giảm nguy cơ tài khoản bị hạn chế.
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => loadZaloUserStatus(true)}
+                  disabled={zaloUserBusy}
+                  style={{ padding: '0.65rem 1rem', background: '#334155', color: '#f8fafc', border: 'none', borderRadius: '0.45rem', cursor: 'pointer' }}
+                >
+                  Kiểm tra trạng thái
+                </button>
+                <button
+                  type="button"
+                  onClick={startZaloUserLogin}
+                  disabled={zaloUserBusy}
+                  style={{ padding: '0.65rem 1rem', background: '#0891b2', color: '#ffffff', border: 'none', borderRadius: '0.45rem', cursor: 'pointer', fontWeight: 600 }}
+                >
+                  {zaloUserBusy ? 'Đang xử lý...' : 'Đăng nhập / Đổi tài khoản bằng QR'}
+                </button>
+                <button
+                  type="button"
+                  onClick={logoutZaloUser}
+                  disabled={zaloUserBusy || !zaloUserStatus?.credential_present}
+                  style={{ padding: '0.65rem 1rem', background: '#7f1d1d', color: '#ffffff', border: 'none', borderRadius: '0.45rem', cursor: 'pointer' }}
+                >
+                  Đăng xuất
+                </button>
+              </div>
+
+              {zaloUserStatus?.login?.qr_data_url && (
+                <div style={{ marginTop: '1rem', display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <img
+                    src={zaloUserStatus.login.qr_data_url}
+                    alt="QR đăng nhập Zalo Personal"
+                    width={240}
+                    height={240}
+                    style={{ width: '240px', height: '240px', background: '#ffffff', padding: '0.5rem', borderRadius: '0.5rem' }}
+                  />
+                  <div style={{ color: '#cbd5e1', maxWidth: '360px', lineHeight: 1.6 }}>
+                    Mở ứng dụng Zalo trên điện thoại và quét mã này. Không đóng trang cho đến khi trạng thái chuyển sang đã kết nối.
+                  </div>
+                </div>
+              )}
+              {zaloUserStatus?.login?.message && (
+                <div style={{ color: '#cbd5e1', marginTop: '0.75rem' }}>
+                  {zaloUserStatus.login.message}
+                </div>
+              )}
+
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+                gap: '1rem',
+                marginTop: '1.25rem'
+              }}>
+                <label style={{ color: '#e2e8f0' }}>
+                  <span style={{ display: 'block', marginBottom: '0.45rem' }}>Hoạt động</span>
+                  <input
+                    type="checkbox"
+                    checked={zaloUserForm.enabled}
+                    onChange={event => setZaloUserForm({ ...zaloUserForm, enabled: event.target.checked })}
+                  />{' '}
+                  Bật Zalo Personal
+                </label>
+                <label style={{ color: '#e2e8f0' }}>
+                  <span style={{ display: 'block', marginBottom: '0.45rem' }}>Quyền truy cập group</span>
+                  <select
+                    value={zaloUserForm.group_policy}
+                    onChange={event => setZaloUserForm({ ...zaloUserForm, group_policy: event.target.value })}
+                    style={{ width: '100%', padding: '0.65rem', background: '#1e293b', color: '#f8fafc', border: '1px solid #334155', borderRadius: '0.4rem' }}
+                  >
+                    <option value="allowlist">Chỉ group được chọn</option>
+                    <option value="open">Tất cả group</option>
+                    <option value="disabled">Không nhận tin group</option>
+                  </select>
+                </label>
+                <label style={{ color: '#e2e8f0' }}>
+                  <span style={{ display: 'block', marginBottom: '0.45rem' }}>Số tin lịch sử mỗi group</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="500"
+                    value={zaloUserForm.history_limit}
+                    onChange={event => setZaloUserForm({ ...zaloUserForm, history_limit: Number(event.target.value) })}
+                    style={{ width: '100%', padding: '0.65rem', background: '#1e293b', color: '#f8fafc', border: '1px solid #334155', borderRadius: '0.4rem' }}
+                  />
+                </label>
+              </div>
+
+              <label style={{ display: 'flex', gap: '0.55rem', alignItems: 'center', color: '#e2e8f0', marginTop: '1rem' }}>
+                <input
+                  type="checkbox"
+                  checked={zaloUserForm.require_mention}
+                  onChange={event => setZaloUserForm({ ...zaloUserForm, require_mention: event.target.checked })}
+                />
+                Chỉ phản hồi khi bot được nhắc tên trong group
+              </label>
+
+              <div style={{ marginTop: '1.25rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                  <div>
+                    <strong style={{ color: '#f8fafc' }}>Group được phép</strong>
+                    <div style={{ color: '#94a3b8', marginTop: '0.2rem' }}>
+                      {zaloUserStatus?.group_count || 0} group có lịch sử · {zaloUserStatus?.message_count || 0} tin đã lưu
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={loadZaloUserGroups}
+                    disabled={zaloUserBusy || !zaloUserStatus?.credential_present}
+                    style={{ padding: '0.6rem 0.9rem', background: '#334155', color: '#f8fafc', border: 'none', borderRadius: '0.4rem', cursor: 'pointer' }}
+                  >
+                    Tải danh sách group
+                  </button>
+                </div>
+                {zaloUserGroups.length > 0 && (
+                  <div style={{ marginTop: '0.75rem', maxHeight: '240px', overflowY: 'auto', border: '1px solid #334155', borderRadius: '0.5rem' }}>
+                    {zaloUserGroups.map(group => (
+                      <label
+                        key={group.id}
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 0.9rem', borderBottom: '1px solid #243244', color: '#e2e8f0' }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={zaloUserForm.group_ids.includes(group.id)}
+                          onChange={event => setZaloUserForm({
+                            ...zaloUserForm,
+                            group_ids: event.target.checked
+                              ? [...new Set([...zaloUserForm.group_ids, group.id])]
+                              : zaloUserForm.group_ids.filter(id => id !== group.id)
+                          })}
+                        />
+                        <span style={{ flex: 1 }}>{group.name}</span>
+                        <code style={{ color: '#94a3b8' }}>{group.id}</code>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => saveZaloUserConfig(true)}
+                disabled={saving || zaloUserBusy}
+                style={{ marginTop: '1.25rem', padding: '0.7rem 1.1rem', background: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '0.45rem', cursor: 'pointer', fontWeight: 600 }}
+              >
+                Lưu cấu hình Zalo Personal
+              </button>
+            </div>
           </div>
         )}
 
@@ -1196,7 +1533,7 @@ export default function SetupWizardPage() {
             {step === 7 && (
               <button
                 type="button"
-                onClick={() => handleSaveStep('zalo', zaloForm)}
+                onClick={handleSaveZaloStep}
                 disabled={saving}
                 style={{ padding: '0.6rem 1.5rem', background: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontWeight: 600 }}
               >

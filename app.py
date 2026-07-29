@@ -28,6 +28,7 @@ load_dotenv(BASE_DIR / ".env")
 import auth_utils
 from services.config_service import config_service
 from services.openclaw_config_service import openclaw_config_service
+from services.zalouser_service import zalouser_service
 
 # Removed xknx imports to use Driver Abstraction Layer
 from core.drivers.knx_driver import KNXDriver
@@ -4000,6 +4001,7 @@ async def setup_integrations(
             })
     return {
         "openclaw": openclaw_status,
+        "zalouser": zalouser_service.get_status(),
         "skill_credentials": openclaw_config_service.list_skill_credentials_safe(),
         "ai_provider_configs": openclaw_config_service.list_provider_configs_safe(),
         "ai_providers": sorted(
@@ -4069,6 +4071,83 @@ async def list_openclaw_skill_credentials(
     }
 
 
+@app.get("/api/setup/zalouser/status")
+async def get_zalouser_status(
+    probe: bool = False,
+    setup_user: dict = Depends(require_setup_access),
+):
+    return {"ok": True, **zalouser_service.get_status(probe=probe)}
+
+
+@app.get("/api/setup/zalouser/groups")
+async def get_zalouser_groups(
+    query: str = "",
+    limit: int = 100,
+    setup_user: dict = Depends(require_setup_access),
+):
+    try:
+        return {
+            "ok": True,
+            "groups": zalouser_service.list_groups(query=query, limit=limit),
+        }
+    except (RuntimeError, ValueError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post("/api/setup/zalouser/config")
+async def save_zalouser_config(
+    payload: dict,
+    setup_user: dict = Depends(require_setup_access),
+):
+    try:
+        result = zalouser_service.update_config(
+            enabled=bool(payload.get("enabled", False)),
+            group_policy=str(payload.get("group_policy", "allowlist")),
+            group_ids=payload.get("group_ids", []),
+            history_limit=int(payload.get("history_limit", 50)),
+            require_mention=bool(payload.get("require_mention", True)),
+        )
+        return {"ok": True, **result}
+    except (RuntimeError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/setup/zalouser/login/start")
+async def start_zalouser_login(
+    setup_user: dict = Depends(require_setup_access),
+):
+    try:
+        return {"ok": True, "login": zalouser_service.start_login()}
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Không thể khởi tạo phiên đăng nhập Zalo Personal.",
+        ) from exc
+
+
+@app.get("/api/setup/zalouser/login/status")
+async def get_zalouser_login_status(
+    setup_user: dict = Depends(require_setup_access),
+):
+    return {"ok": True, "login": zalouser_service.get_status()["login"]}
+
+
+@app.post("/api/setup/zalouser/logout")
+async def logout_zalouser(
+    payload: dict,
+    setup_user: dict = Depends(require_setup_access),
+):
+    if payload.get("confirm") is not True:
+        raise HTTPException(
+            status_code=400,
+            detail="Cần xác nhận rõ trước khi đăng xuất Zalo Personal.",
+        )
+    try:
+        return zalouser_service.logout()
+    except (RuntimeError, OSError, subprocess.SubprocessError) as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
 @app.put("/api/setup/openclaw/skill-credentials/{skill_id}/{key}")
 async def update_openclaw_skill_credential(
     skill_id: str,
@@ -4116,6 +4195,11 @@ async def setup_category(
         openclaw_status = openclaw_config_service.get_status()
         if openclaw.get("enabled") and not openclaw_status["runtime_installed"]:
             blockers.append("OpenClaw đang bật nhưng runtime chưa được cài")
+        zalouser = zalouser_service.get_status()
+        if zalouser["enabled"] and not zalouser["credential_present"]:
+            blockers.append(
+                "Zalo Personal đang bật nhưng chưa đăng nhập tài khoản"
+            )
         if blockers:
             raise HTTPException(
                 status_code=409,

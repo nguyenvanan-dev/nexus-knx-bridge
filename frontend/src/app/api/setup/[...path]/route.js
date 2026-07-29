@@ -11,7 +11,8 @@ async function proxyRequest(req, params) {
   const pathArr = (await params).path || [];
   const targetPath = pathArr.join('/');
 
-  const url = `${BACKEND_URL}/api/setup/${targetPath}`;
+  const requestUrl = new URL(req.url);
+  const url = `${BACKEND_URL}/api/setup/${targetPath}${requestUrl.search}`;
   const options = {
     method: req.method,
     headers: {
