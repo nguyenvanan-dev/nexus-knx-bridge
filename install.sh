@@ -24,13 +24,14 @@ command -v npm >/dev/null 2>&1 || { echo "npm is required but not installed."; e
 
 PYTHON_VER=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
 echo "Found Python $PYTHON_VER and Node $(node -v)"
-python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)' || {
-    echo "Python >= 3.10 is required."
+python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' || {
+    echo "Python >= 3.11 is required."
     exit 1
 }
 NODE_MAJOR=$(node -p 'Number(process.versions.node.split(".")[0])')
-if [ "$NODE_MAJOR" -lt 18 ]; then
-    echo "Node.js >= 18 is required."
+NODE_MINOR=$(node -p 'Number(process.versions.node.split(".")[1])')
+if [ "$NODE_MAJOR" -lt 20 ] || { [ "$NODE_MAJOR" -eq 20 ] && [ "$NODE_MINOR" -lt 9 ]; }; then
+    echo "Node.js >= 20.9 is required."
     exit 1
 fi
 
@@ -81,7 +82,7 @@ fi
 # 3. Setup Frontend Dependencies & Build
 echo "[3/7] Installing frontend dependencies & building production bundle..."
 if [ -d "frontend" ]; then
-    (cd frontend && npm install && npm run build)
+    (cd frontend && npm ci && npm run build)
 fi
 
 # 4. Prepare Centralized Configuration Baseline

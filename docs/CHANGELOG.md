@@ -14,8 +14,8 @@ This document tracks the high-level phases and milestones of the project.
 - Added end-to-end setup simulation using temporary DB/config/runtime files.
 - Updated frontend dependencies and reduced `npm audit` findings to zero.
 - Added GitHub Actions for backend tests, frontend audit/build, and gitleaks.
-- Remaining release acceptance: owner-approved physical KNX and live
-  Telegram/Zalo tests.
+- Physical KNX, live Telegram/Zalo and Raspberry Pi reboot acceptance confirmed
+  by the project owner on 2026-07-29.
 
 ## Phase A: Foundation & Architecture
 - Setup FastAPI backend and `xknx` tunneling.
@@ -29,17 +29,19 @@ This document tracks the high-level phases and milestones of the project.
 - Legacy fragmented databases (`knx.db`, `chat_history.db`).
 
 ## Phase C: Optimization & Hardening
-- Database unification into `smarthome.db`.
+- Consolidated KNX/device configuration into `smarthome.db`; retained
+  `data/chat_history.db` for Zalo/group conversation history.
 - SQLite WAL mode and connection pooling implemented.
 - Asynchronous EventBus and background queue processing introduced.
 - Refactored `IDENTITY.md` to remove PII-based authorization.
 - Shifted all RBAC to OpenClaw Gateway `ownerAllowFrom`.
 
-## Phase D: Production Deployment (CURRENT)
+## Phase D: Production Deployment
 - **Sprint 10:** Target Raspberry Pi deployment.
 - Systemd service integration for `knx-bridge`.
 - Resolved `uvicorn` port conflicts.
-- **Remaining:** End-to-end physical verification (KNX bus physical actuation via chat adapters).
+- Physical KNX actuation, Telegram/Zalo E2E and reboot verification accepted by
+  the project owner.
 
 ## v1.0 Release Candidate
 - Added a portable OpenClaw KNX AI Agent workspace template.

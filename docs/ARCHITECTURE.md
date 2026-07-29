@@ -38,14 +38,21 @@ AI providers -> optional 9router -> OpenClaw
   - `trigger_manager.py`
 
 ## 3. Database Architecture
-**Unified `smarthome.db` (SQLite with WAL mode).**
-Key Tables:
+The runtime intentionally uses two SQLite databases with separate ownership:
+
+- **`smarthome.db`** is the canonical KNX, device, scene, automation and web
+  administration database. It uses WAL mode.
+- **`data/chat_history.db`** stores Zalo/group conversation history used by the
+  chat-history and summarization flow. It is not the canonical device registry.
+
+Key `smarthome.db` tables:
 - `devices`: KNX mapping, Group Addresses, and roles.
 - `users`: Local users.
 - `device_history`: Time-series device state changes.
 - `automation_rules_v2`: Complex logic triggers and actions.
 - `floor_plans` & `floor_plan_devices`: UI mapping.
-- `ai_conversations` & `ai_memories`: Unified from legacy `chat_history.db`.
+- `ai_conversations` & `ai_memories`: Agent-facing conversation context and
+  structured memory.
 - `scenes` & `scene_actions`.
 
 ## 4. Identity & Authorization Architecture
@@ -59,3 +66,5 @@ Key Tables:
 - **`~/.openclaw/openclaw.json`:** OpenClaw routing, tokens, models, RBAC (`ownerAllowFrom`).
 - **`knx-bridge/.env`:** Backend tokens (`KNX_API_TOKEN`) and secrets.
 - **`smarthome.db`:** Canonical device, Group Address, scene, and runtime configuration storage.
+- **`data/chat_history.db`:** Zalo/group message history for summarization and
+  retrieval.

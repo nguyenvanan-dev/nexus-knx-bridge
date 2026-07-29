@@ -9,10 +9,13 @@ This document tracks significant architectural and engineering decisions to prev
 - **Implementation:** `ownerAllowFrom` in `~/.openclaw/openclaw.json` maps Telegram ID `<TELEGRAM_OWNER_ID>` and Zalo ID `<ZALO_OWNER_ID>` to `role: owner`.
 - **Status:** Implemented and Verified.
 
-## Decision 2: Unify Databases
+## Decision 2: Separate Device and Conversation Storage
 - **Context:** The system had fragmented databases (`chat_history.db`, `knx.db`).
-- **Decision:** Consolidate into a single `smarthome.db`.
-- **Why:** Reduces connection overhead, simplifies backups, allows cross-table foreign key constraints (e.g., AI memories referencing devices).
+- **Decision:** Consolidate KNX/device configuration into `smarthome.db`, while
+  retaining `data/chat_history.db` for Zalo/group message history and
+  summarization.
+- **Why:** Device configuration needs one canonical registry, while messaging
+  history has a distinct retention policy and runtime owner.
 - **Status:** Implemented and Verified.
 
 ## Decision 3: Enable SQLite WAL Mode

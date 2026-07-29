@@ -23,8 +23,8 @@ live Telegram/Zalo delivery remain owner-operated acceptance tests.
 ## Requirements
 
 - Linux on x86_64 or ARM64 (Ubuntu, Debian, Raspberry Pi OS)
-- Python 3.10 or newer
-- Node.js 18 or newer
+- Python 3.11 or newer
+- Node.js 20.9 or newer
 - KNX/IP gateway for physical operation
 - OpenClaw agent runtime for Telegram/Zalo, skills and task orchestration
   (optional for KNX-only use)

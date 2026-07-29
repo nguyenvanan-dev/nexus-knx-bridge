@@ -23,6 +23,19 @@ check_cmd python3
 check_cmd node
 check_cmd npm
 
+if command -v python3 >/dev/null 2>&1 && ! python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)'; then
+    echo "✗ [FAIL] Python >= 3.11 is required"
+    ERRORS=$((ERRORS + 1))
+fi
+
+if command -v node >/dev/null 2>&1; then
+    NODE_VERSION_OK=$(node -p 'const [a,b]=process.versions.node.split(".").map(Number); Number(a > 20 || (a === 20 && b >= 9))')
+    if [ "$NODE_VERSION_OK" != "1" ]; then
+        echo "✗ [FAIL] Node.js >= 20.9 is required"
+        ERRORS=$((ERRORS + 1))
+    fi
+fi
+
 if [ -d ".venv" ]; then
     echo "✓ [OK] Python virtual environment (.venv) present"
 else
@@ -58,7 +71,8 @@ check_service() {
     elif systemctl is-active --quiet "$service" 2>/dev/null; then
         echo "✓ [OK] System service $service is ACTIVE"
     else
-        echo "⚠ [WARN] Service $service is not active"
+        echo "✗ [FAIL] Service $service is not active"
+        ERRORS=$((ERRORS + 1))
     fi
 }
 

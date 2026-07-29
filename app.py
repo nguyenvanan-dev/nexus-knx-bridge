@@ -45,7 +45,6 @@ from core.automation_engine_v2 import AutomationEngineV2, init_automation_schema
 from core.rule_evaluator import RuleEvaluator
 from core.action_executor import ActionExecutor
 from core.trigger_manager import TriggerManager
-from core.trigger_manager import TriggerManager
 from core.audit_logger import AuditLogger, init_audit_schema
 from core.notification_engine import NotificationEngine
 from services.health_service import HealthService
@@ -142,7 +141,7 @@ init_db()
 init_smarthome_db()
 auth_utils.ensure_auth_schema(BASE_DIR / "smarthome.db")
 
-KNX_GATEWAY_IP = os.getenv("KNX_GATEWAY_IP", "10.1.10.137")
+KNX_GATEWAY_IP = os.getenv("KNX_GATEWAY_IP", "127.0.0.1")
 KNX_GATEWAY_PORT = int(os.getenv("KNX_GATEWAY_PORT", "3671"))
 
 def get_local_ip():
@@ -3707,6 +3706,71 @@ async def ask_ai(request: AskAICommand):
 class SqlQueryCommand(BaseModel):
     query: str
 
+DATABASE_ADMIN_TABLES = {
+    "devices",
+    "device_history",
+    "command_audit",
+    "analytics_daily",
+    "ai_conversations",
+    "ai_memories",
+    "scenes",
+    "scene_actions",
+    "scene_versions",
+    "automation_rules",
+    "automation_rules_v2",
+    "floor_plans",
+    "floor_plan_devices",
+}
+DATABASE_ADMIN_ROW_LIMIT = 500
+DATABASE_SENSITIVE_COLUMN_MARKERS = (
+    "password",
+    "secret",
+    "token",
+    "api_key",
+    "hash",
+)
+
+
+def _database_admin_authorizer(action, arg1, _arg2, _db_name, _trigger_name):
+    if action == sqlite3.SQLITE_SELECT:
+        return sqlite3.SQLITE_OK
+    if action == sqlite3.SQLITE_READ and arg1 in DATABASE_ADMIN_TABLES:
+        return sqlite3.SQLITE_OK
+    if action == sqlite3.SQLITE_FUNCTION:
+        return sqlite3.SQLITE_OK
+    return sqlite3.SQLITE_DENY
+
+
+def _validate_database_admin_query(query: str) -> str:
+    normalized = query.strip()
+    if not normalized:
+        raise ValueError("Query is empty.")
+    if not re.match(r"(?is)^select\b", normalized):
+        raise ValueError("Database Admin only accepts read-only SELECT queries.")
+    if ";" in normalized.rstrip(";"):
+        raise ValueError("Only one SELECT statement is allowed.")
+    if re.search(r"(?is)(--|/\*|\bpragma\b|\battach\b|\bdetach\b)", normalized):
+        raise ValueError("Comments, PRAGMA, ATTACH and DETACH are not allowed.")
+    return normalized
+
+
+def _redact_database_admin_row(row: dict) -> dict:
+    return {
+        key: (
+            "[REDACTED]"
+            if any(marker in key.lower() for marker in DATABASE_SENSITIVE_COLUMN_MARKERS)
+            else value
+        )
+        for key, value in row.items()
+    }
+
+
+def _backup_sqlite_database(source_path: Path, destination_path: Path) -> None:
+    with sqlite3.connect(str(source_path)) as source:
+        with sqlite3.connect(str(destination_path)) as destination:
+            source.backup(destination)
+
+
 @app.get("/api/database/tables")
 async def get_tables(x_knx_token: Optional[str] = Header(default=None), current_user: dict = Depends(auth_utils.require_admin)):
     check_auth(x_knx_token)
@@ -3718,7 +3782,11 @@ async def get_tables(x_knx_token: Optional[str] = Header(default=None), current_
         conn = sqlite3.connect(str(db_path))
         cursor = conn.cursor()
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        tables = [row[0] for row in cursor.fetchall()]
+        tables = [
+            row[0]
+            for row in cursor.fetchall()
+            if row[0] in DATABASE_ADMIN_TABLES
+        ]
 
         result = []
         for table in tables:
@@ -3733,7 +3801,6 @@ async def get_tables(x_knx_token: Optional[str] = Header(default=None), current_
 
 @app.post("/api/database/snapshot")
 async def create_snapshot(current_user: dict = Depends(auth_utils.require_admin)):
-    import shutil
     db_path = BASE_DIR / "smarthome.db"
     backup_dir = BASE_DIR / "backups"
     backup_dir.mkdir(exist_ok=True)
@@ -3743,7 +3810,7 @@ async def create_snapshot(current_user: dict = Depends(auth_utils.require_admin)
     snapshot_path = backup_dir / snapshot_filename
 
     try:
-        shutil.copy2(db_path, snapshot_path)
+        _backup_sqlite_database(db_path, snapshot_path)
         return {"ok": True, "snapshot": snapshot_filename}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create snapshot: {str(e)}")
@@ -3754,25 +3821,25 @@ async def execute_query(command: SqlQueryCommand, x_knx_token: Optional[str] = H
     db_path = BASE_DIR / "smarthome.db"
 
     try:
-        conn = sqlite3.connect(str(db_path))
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-
-        cursor.execute(command.query)
-
-        if command.query.strip().upper().startswith("SELECT") or command.query.strip().upper().startswith("PRAGMA"):
-            rows = cursor.fetchall()
+        query = _validate_database_admin_query(command.query)
+        with sqlite3.connect(str(db_path)) as conn:
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA query_only = ON")
+            conn.set_authorizer(_database_admin_authorizer)
+            cursor = conn.execute(query)
+            rows = cursor.fetchmany(DATABASE_ADMIN_ROW_LIMIT + 1)
+            truncated = len(rows) > DATABASE_ADMIN_ROW_LIMIT
+            rows = rows[:DATABASE_ADMIN_ROW_LIMIT]
             columns = [description[0] for description in cursor.description] if cursor.description else []
-            data = [dict(row) for row in rows]
-            conn.close()
-            return {"columns": columns, "data": data}
-        else:
-            conn.commit()
-            affected = cursor.rowcount
-            conn.close()
-            return {"affected_rows": affected, "message": "Query executed successfully."}
+            data = [_redact_database_admin_row(dict(row)) for row in rows]
+            return {
+                "columns": columns,
+                "data": data,
+                "truncated": truncated,
+                "row_limit": DATABASE_ADMIN_ROW_LIMIT,
+            }
 
-    except Exception as e:
+    except (ValueError, sqlite3.Error) as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 class RestartCommand(BaseModel):

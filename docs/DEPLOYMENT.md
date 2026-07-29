@@ -3,8 +3,8 @@
 ## Supported Target
 
 - Ubuntu, Debian or Raspberry Pi OS on ARM64/x86_64
-- Python 3.10+
-- Node.js 18+
+- Python 3.11+
+- Node.js 20.9+
 - KNX/IP gateway for physical control
 - OpenClaw when agent, skills or Telegram/Zalo integrations are enabled
 - 9router when quota-aware AI provider routing and fallback are desired

@@ -4,8 +4,8 @@ Tài liệu hướng dẫn cài đặt, cấu hình và vận hành hệ thống
 
 ## 1. Yêu Cầu Hệ Thống
 - **Hệ điều hành:** Linux (Ubuntu / Debian / Raspberry Pi OS 64-bit)
-- **Python:** >= 3.10
-- **Node.js:** >= 18.x
+- **Python:** >= 3.11
+- **Node.js:** >= 20.9
 - **Cổng kết nối:**
   - `5055` - KNX Bridge FastAPI Backend
   - `3000` - KNX Bridge Next.js Web UI
