@@ -1,4 +1,5 @@
 import json
+import hashlib
 import os
 import shutil
 import subprocess
@@ -81,6 +82,23 @@ class OpenClawConfigService:
             "credentials_file_present": pairing_file.exists(),
         }
 
+    @staticmethod
+    def _credential_identity(value: Any) -> Dict[str, Any]:
+        secret = str(value or "")
+        if not secret:
+            return {
+                "configured": False,
+                "masked": "",
+                "fingerprint": "",
+            }
+        prefix = secret[:4]
+        suffix = secret[-4:] if len(secret) > 8 else ""
+        return {
+            "configured": True,
+            "masked": f"{prefix}{'•' * 12}{suffix}",
+            "fingerprint": hashlib.sha256(secret.encode()).hexdigest()[:8],
+        }
+
     def get_status(self) -> Dict[str, Any]:
         executable = shutil.which("openclaw") or shutil.which("9router")
         config = self._load_config()
@@ -104,6 +122,24 @@ class OpenClawConfigService:
         )
         provider = model_ref.split("/", 1)[0] if "/" in model_ref else ""
         provider_config = config.get("models", {}).get("providers", {}).get(provider, {})
+        provider_statuses = []
+        providers = config.get("models", {}).get("providers", {})
+        if isinstance(providers, dict):
+            for provider_name, details in sorted(providers.items()):
+                details = details if isinstance(details, dict) else {}
+                identity = self._credential_identity(details.get("apiKey"))
+                provider_statuses.append({
+                    "provider": provider_name,
+                    "source": "~/.openclaw/openclaw.json",
+                    "active": provider_name == provider,
+                    "base_url_configured": bool(details.get("baseUrl")),
+                    "models": [
+                        str(item.get("id") or item.get("name") or "")
+                        for item in details.get("models", [])
+                        if isinstance(item, dict)
+                    ],
+                    **identity,
+                })
         channels = config.get("channels", {})
 
         return {
@@ -129,6 +165,7 @@ class OpenClawConfigService:
                     else False
                 ),
             },
+            "provider_statuses": provider_statuses,
             "telegram_pairing": self._pairing_status(
                 "telegram", channels.get("telegram", {})
             ),
@@ -203,6 +240,47 @@ class OpenClawConfigService:
 
     def update_provider_safe(self, provider: str, model: str) -> bool:
         return self.update_runtime_safe(provider=provider, model=model)
+
+    def update_provider_credential_safe(
+        self,
+        provider: str,
+        api_key: str,
+        clear: bool = False,
+    ) -> bool:
+        provider = str(provider).strip().lower()
+        if not provider or not self.config_path.exists():
+            return False
+        config = self._load_config()
+        target = config.setdefault("models", {}).setdefault(
+            "providers", {}
+        ).setdefault(provider, {})
+        if clear:
+            target.pop("apiKey", None)
+        elif api_key:
+            target["apiKey"] = api_key
+        else:
+            return True
+        self._atomic_write_config(config)
+        return True
+
+    def _atomic_write_config(self, config: Dict[str, Any]) -> None:
+        fd, temp_path = tempfile.mkstemp(
+            dir=str(self.openclaw_dir), prefix=".openclaw_", suffix=".tmp"
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump(config, handle, indent=2, ensure_ascii=False)
+                handle.write("\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.chmod(temp_path, 0o600)
+            shutil.copy2(self.config_path, self.openclaw_dir / "openclaw.json.bak")
+            os.replace(temp_path, self.config_path)
+            os.chmod(self.config_path, 0o600)
+        except Exception:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            raise
 
     def update_channel_safe(
         self,

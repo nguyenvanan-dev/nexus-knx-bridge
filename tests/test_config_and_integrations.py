@@ -53,7 +53,7 @@ def test_openclaw_adapter(tmp_path):
             "model": "local/test-model",
         }},
         "models": {"providers": {
-            "local": {"baseUrl": "http://127.0.0.1:1234/v1", "apiKey": "secret"}
+            "local": {"baseUrl": "http://127.0.0.1:1234/v1", "apiKey": "secret-test-key"}
         }},
         "channels": {
             "telegram": {"botToken": "secret", "allowFrom": ["owner"]}
@@ -73,7 +73,14 @@ def test_openclaw_adapter(tmp_path):
     assert status["provider_metadata"]["provider"] == "local"
     assert status["provider_metadata"]["model"] == "local/test-model"
     assert status["provider_metadata"]["api_key_configured"] is True
-    assert "secret" not in json.dumps(status)
+    assert "secret-test-key" not in json.dumps(status)
+    local_provider = next(
+        item for item in status["provider_statuses"]
+        if item["provider"] == "local"
+    )
+    assert local_provider["masked"].startswith("secr")
+    assert local_provider["masked"].endswith("-key")
+    assert len(local_provider["fingerprint"]) == 8
     assert status["telegram_pairing"]["pending_pairing_requests"] == 1
     assert oc_adapter.update_runtime_safe(
         provider="local",
@@ -87,6 +94,16 @@ def test_openclaw_adapter(tmp_path):
     updated = json.loads((openclaw_dir / "openclaw.json").read_text())
     assert updated["agents"]["defaults"]["model"] == "local/new-model"
     assert updated["channels"]["telegram"]["allowFrom"] == ["owner", "family"]
+    assert oc_adapter.update_provider_credential_safe(
+        "groq", "unit_test_provider_key_123456"
+    )
+    refreshed = oc_adapter.get_status()
+    groq = next(
+        item for item in refreshed["provider_statuses"]
+        if item["provider"] == "groq"
+    )
+    assert groq["masked"].startswith("unit")
+    assert "unit_test_provider_key_123456" not in json.dumps(refreshed)
 
 
 def test_extended_setup_schema(tmp_path):
@@ -106,6 +123,23 @@ def test_extended_setup_schema(tmp_path):
         "frontend", {"backend_url": "http://127.0.0.1:5055", "frontend_port": 3000}
     )
     assert frontend["frontend_port"] == 3000
+    cs.update_category_config(
+        "ai",
+        {
+            "provider": "groq",
+            "model": "test-model",
+            "base_url": "https://api.groq.com/openai/v1",
+            "api_key": "unit_test_only_key_123456",
+        },
+    )
+    env_text = (tmp_path / ".env").read_text(encoding="utf-8")
+    assert "GROQ_API_KEY=unit_test_only_key_123456" in env_text
+    assert "OPENAI_API_KEY=unit_test_only_key_123456" not in env_text
+    cs.update_category_config(
+        "ai", {"provider": "gemini", "model": "gemini-test", "api_key": ""}
+    )
+    env_text = (tmp_path / ".env").read_text(encoding="utf-8")
+    assert "GEMINI_API_KEY=" not in env_text
     runtime = tmp_path / "openclaw"
     runtime.write_text("#!/bin/sh\n", encoding="utf-8")
     runtime.chmod(0o700)

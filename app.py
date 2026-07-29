@@ -13,6 +13,7 @@ import sqlite3
 import aiosqlite
 import time
 import logging
+import hashlib
 
 from sse_starlette.sse import EventSourceResponse
 from dotenv import load_dotenv
@@ -3961,8 +3962,47 @@ async def setup_integrations(
     setup_user: dict = Depends(require_setup_access),
 ):
     tailscale = await test_tailscale_status(setup_user)
+    openclaw_status = openclaw_config_service.get_status()
+    provider_statuses = {}
+    for item in openclaw_status.get("provider_statuses", []):
+        canonical_name = "gemini" if item["provider"] == "google" else item["provider"]
+        normalized = dict(item)
+        normalized["provider"] = canonical_name
+        provider_statuses[canonical_name] = normalized
+    env_provider_keys = {
+        "openai": ("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY", "")),
+        "groq": ("GROQ_API_KEY", os.getenv("GROQ_API_KEY", "")),
+        "gemini": (
+            "GEMINI_API_KEY",
+            os.getenv("GEMINI_API_KEY", "") or os.getenv("GOOGLE_API_KEY", ""),
+        ),
+        "9router": ("NINE_ROUTER_API_KEY", os.getenv("NINE_ROUTER_API_KEY", "")),
+    }
+    active_provider = openclaw_status.get("provider_metadata", {}).get("provider")
+    for provider, (env_name, value) in env_provider_keys.items():
+        current = provider_statuses.setdefault(provider, {
+            "provider": provider,
+            "source": "not configured",
+            "active": provider == active_provider,
+            "base_url_configured": False,
+            "models": [],
+            "configured": False,
+            "masked": "",
+            "fingerprint": "",
+        })
+        if value:
+            current.update({
+                "source": f".env / {env_name}",
+                "configured": True,
+                "masked": f"{value[:4]}{'•' * 12}{value[-4:] if len(value) > 8 else ''}",
+                "fingerprint": hashlib.sha256(value.encode()).hexdigest()[:8],
+            })
     return {
-        "openclaw": openclaw_config_service.get_status(),
+        "openclaw": openclaw_status,
+        "ai_providers": sorted(
+            provider_statuses.values(),
+            key=lambda item: (not item.get("active", False), item["provider"]),
+        ),
         "tailscale": tailscale,
         "services": _safe_service_status(),
         "backup_available": (BASE_DIR / "smarthome.db").exists(),
@@ -4018,7 +4058,16 @@ async def setup_category(
 
     try:
         res = config_service.update_category_config(category, payload)
-        if category == "openclaw":
+        if category == "ai":
+            api_key = str(payload.get("api_key", "") or "")
+            if api_key:
+                provider = str(payload.get("provider", "")).strip().lower()
+                openclaw_config_service.update_provider_credential_safe(
+                    provider="google" if provider == "gemini" else provider,
+                    api_key="" if api_key == "__CLEAR__" else api_key,
+                    clear=api_key == "__CLEAR__",
+                )
+        elif category == "openclaw":
             if payload.get("enabled"):
                 updated = openclaw_config_service.update_runtime_safe(
                     provider=str(payload.get("provider", "")).strip(),

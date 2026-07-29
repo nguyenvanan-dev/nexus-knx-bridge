@@ -15,17 +15,38 @@ RUNTIME_ENV_KEYS = {
         "gateway_port": "KNX_GATEWAY_PORT",
         "individual_address": "KNX_INDIVIDUAL_ADDRESS",
     },
-    "ai": {
-        "api_key": "OPENAI_API_KEY",
-        "base_url": "OPENAI_BASE_URL",
-        "model": "OPENAI_MODEL",
-    },
     "telegram": {
         "bot_token": "TELEGRAM_BOT_TOKEN",
         "chat_id": "TELEGRAM_CHAT_ID",
     },
     "zalo": {
         "webhook_url": "ZALO_WEBHOOK_URL",
+    },
+}
+
+AI_ENV_KEYS = {
+    "openai": {
+        "api_key": "OPENAI_API_KEY",
+        "base_url": "OPENAI_BASE_URL",
+        "model": "OPENAI_MODEL",
+    },
+    "groq": {
+        "api_key": "GROQ_API_KEY",
+        "base_url": "GROQ_BASE_URL",
+        "model": "GROQ_MODEL",
+    },
+    "gemini": {
+        "api_key": "GEMINI_API_KEY",
+        "model": "GEMINI_MODEL",
+    },
+    "google": {
+        "api_key": "GOOGLE_API_KEY",
+        "model": "GOOGLE_MODEL",
+    },
+    "9router": {
+        "api_key": "NINE_ROUTER_API_KEY",
+        "base_url": "NINE_ROUTER_BASE_URL",
+        "model": "NINE_ROUTER_MODEL",
     },
 }
 
@@ -271,6 +292,13 @@ class ConfigService:
             clear_secrets = [clear_secrets]
 
         target_cat = current[category]
+        if category == "ai":
+            previous_provider = str(target_cat.get("provider", "")).lower()
+            next_provider = str(
+                validated_data.get("provider", previous_provider)
+            ).lower()
+            if next_provider != previous_provider and not data.get("api_key"):
+                target_cat["api_key"] = ""
 
         for k, v in validated_data.items():
             if k == "clear_secrets":
@@ -290,14 +318,41 @@ class ConfigService:
         current[category] = target_cat
         self.save_config(current)
         self._sync_runtime_env(category, target_cat)
+        if (
+            category == "ai"
+            and ("api_key" in clear_secrets or data.get("api_key") == "__CLEAR__")
+        ):
+            provider = str(target_cat.get("provider", "")).lower()
+            env_key = AI_ENV_KEYS.get(provider, {}).get("api_key")
+            if env_key:
+                self._clear_runtime_env_key(env_key)
         return self.get_public_config()[category]
+
+    def _clear_runtime_env_key(self, env_key: str) -> None:
+        if not os.path.exists(self.env_path):
+            os.environ.pop(env_key, None)
+            return
+        with open(self.env_path, "r", encoding="utf-8") as env_file:
+            lines = env_file.read().splitlines()
+        output = [
+            line for line in lines
+            if not (
+                line.strip()
+                and not line.lstrip().startswith("#")
+                and line.split("=", 1)[0].strip() == env_key
+            )
+        ]
+        self._atomic_write_env(output)
+        os.environ.pop(env_key, None)
 
     def _sync_runtime_env(self, category: str, values: Dict[str, Any]):
         mapping = RUNTIME_ENV_KEYS.get(category, {})
+        if category == "ai":
+            mapping = AI_ENV_KEYS.get(str(values.get("provider", "")).lower(), {})
         updates = {
             env_key: str(values[field])
             for field, env_key in mapping.items()
-            if field in values and values[field] is not None
+            if field in values and values[field] not in (None, "")
         }
         if not updates:
             return
@@ -322,6 +377,12 @@ class ConfigService:
             if key not in seen:
                 output.append(f"{key}={value}")
 
+        self._atomic_write_env(output)
+
+        for key, value in updates.items():
+            os.environ[key] = value
+
+    def _atomic_write_env(self, output: list) -> None:
         env_dir = os.path.dirname(self.env_path)
         os.makedirs(env_dir, exist_ok=True)
         fd, temp_path = tempfile.mkstemp(
@@ -341,9 +402,6 @@ class ConfigService:
             if os.path.exists(temp_path):
                 os.remove(temp_path)
             raise
-
-        for key, value in updates.items():
-            os.environ[key] = value
 
     def save_config(self, config_data: Dict[str, Any], backup: bool = True):
         # Backup before write

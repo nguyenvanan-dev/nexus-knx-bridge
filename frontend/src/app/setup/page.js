@@ -78,7 +78,7 @@ export default function SetupWizardPage() {
   }, []);
 
   useEffect(() => {
-    if (step >= 5) refreshIntegrations();
+    if (step >= 4) refreshIntegrations();
   }, [step]);
 
   const loadSetupStatus = async () => {
@@ -466,6 +466,52 @@ export default function SetupWizardPage() {
           <div>
             <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#f1f5f9', marginBottom: '1rem' }}>Step 4: AI Provider / LLM API</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {integrations?.ai_providers?.length > 0 && (
+                <div>
+                  <div style={{ color: '#94a3b8', fontSize: '0.875rem', marginBottom: '0.5rem' }}>Provider credentials đang có:</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.65rem' }}>
+                    {integrations.ai_providers.map(item => (
+                      <button
+                        type="button"
+                        key={item.provider}
+                        onClick={() => setAiForm({
+                          ...aiForm,
+                          provider: item.provider,
+                          model: item.models?.[0] || aiForm.model,
+                          api_key: ''
+                        })}
+                        style={{
+                          padding: '0.8rem',
+                          textAlign: 'left',
+                          borderRadius: '0.45rem',
+                          border: item.active ? '1px solid #22d3ee' : '1px solid #334155',
+                          background: item.active ? 'rgba(34,211,238,0.08)' : '#172033',
+                          color: '#e2e8f0',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.45rem' }}>
+                          <strong style={{ textTransform: 'capitalize' }}>{item.provider}</strong>
+                          <span style={{ color: item.configured ? '#34d399' : '#f59e0b', fontSize: '0.8rem' }}>
+                            {item.active ? 'Active' : item.configured ? 'Configured' : 'Missing'}
+                          </span>
+                        </div>
+                        <div style={{ fontFamily: 'monospace', fontSize: '0.82rem', color: '#cbd5e1' }}>
+                          {item.masked || 'Chưa có API key'}
+                        </div>
+                        {item.fingerprint && (
+                          <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.3rem' }}>
+                            SHA256: {item.fingerprint}
+                          </div>
+                        )}
+                        <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.3rem', overflowWrap: 'anywhere' }}>
+                          {item.source}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div>
                 <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>AI Provider:</label>
                 <select
@@ -474,8 +520,10 @@ export default function SetupWizardPage() {
                   style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }}
                 >
                   <option value="openai">OpenAI</option>
-                  <option value="anthropic">Anthropic</option>
+                  <option value="groq">Groq</option>
                   <option value="gemini">Google Gemini</option>
+                  <option value="9router">9router</option>
+                  <option value="anthropic">Anthropic</option>
                   <option value="custom">Custom / Ollama / Local</option>
                 </select>
               </div>
@@ -502,7 +550,7 @@ export default function SetupWizardPage() {
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                   <input
                     type={showSecrets.ai_key ? 'text' : 'password'}
-                    placeholder={status?.config?.ai?.api_key?.configured ? 'Đã cấu hình - để trống nếu giữ nguyên' : 'Nhập API Key mới'}
+                    placeholder={integrations?.ai_providers?.find(item => item.provider === aiForm.provider)?.configured ? 'Đã cấu hình - để trống nếu giữ nguyên' : 'Nhập API Key mới'}
                     value={aiForm.api_key}
                     onChange={e => setAiForm({ ...aiForm, api_key: e.target.value })}
                     style={{ flex: 1, padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }}
@@ -514,7 +562,7 @@ export default function SetupWizardPage() {
                   >
                     {showSecrets.ai_key ? 'Ẩn' : 'Hiện'}
                   </button>
-                  {status?.config?.ai?.api_key?.configured && (
+                  {integrations?.ai_providers?.find(item => item.provider === aiForm.provider)?.configured && (
                     <button
                       type="button"
                       onClick={() => setAiForm({ ...aiForm, api_key: '__CLEAR__' })}
