@@ -48,3 +48,5 @@ scratch/
 *credentials*
 private-config.json
 legacy-sources/
+uploads/
+proposals/
