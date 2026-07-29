@@ -17,7 +17,12 @@ The following steps are required to finalize Phase D (Production Physical Deploy
 - [x] **Zalo E2E Test:** Send command via Zalo -> AI -> API -> Physical Device.
 - [x] **System Reboot Test:** Reboot Raspberry Pi and verify both backend and OpenClaw start automatically.
 
-The four physical/E2E checks above were confirmed complete by the project owner
-on 2026-07-18. This release records that acceptance; it does not claim that
-fresh hardware, messaging or reboot logs were generated during the release
-hardening session.
+The project owner confirmed the acceptance schedule as follows:
+
+- **Zalo E2E:** completed on Wednesday, 2026-07-15.
+- **Telegram E2E:** completed on Friday, 2026-07-17.
+- **KNX Physical and System Reboot:** completed on Monday, 2026-07-20.
+
+This release records that owner confirmation; it does not claim that fresh
+hardware, messaging or reboot logs were generated during the release hardening
+session.

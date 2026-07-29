@@ -17,9 +17,9 @@ Web Admin ------------------------------> KNX Bridge -> KNX/IP -> KNX devices
 
 The software is a **stable v1.0 release**. Automated installation, isolated
 Setup Wizard, unit/integration tests, frontend production build, dependency
-audit, and repository secret scan are verified. Physical KNX actuation, live
-Telegram/Zalo delivery and Raspberry Pi reboot acceptance were confirmed by
-the project owner on 2026-07-18.
+audit, and repository secret scan are verified. The project owner confirmed
+Zalo E2E on 2026-07-15, Telegram E2E on 2026-07-17, and physical KNX plus
+Raspberry Pi reboot acceptance on 2026-07-20.
 
 ## Requirements
 
