@@ -170,6 +170,31 @@ export default function SetupWizardPage() {
     }
   };
 
+  const bootstrapOpenClawWorkspace = async () => {
+    if (!window.confirm(
+      'Tạo các file định nghĩa KNX AI Agent còn thiếu? File đang tồn tại sẽ được giữ nguyên.'
+    )) return;
+    setSaving(true);
+    try {
+      const res = await fetch('/api/setup/openclaw/workspace/bootstrap', {
+        method: 'POST',
+        headers: setupHeaders(),
+        body: JSON.stringify({ confirm: true })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Không thể khởi tạo OpenClaw workspace');
+      await refreshIntegrations();
+      const created = Array.isArray(data.created) && data.created.length
+        ? data.created.join(', ')
+        : 'Không có file mới';
+      showToast(`OpenClaw workspace: ${created}. File hiện có được giữ nguyên.`, 'success');
+    } catch (error) {
+      showToast(error.message, 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const loadZaloUserStatus = async (probe = false) => {
     try {
       const res = await fetch(
@@ -562,8 +587,8 @@ export default function SetupWizardPage() {
     { num: 3, title: 'KNX Gateway' },
     { num: 4, title: 'AI Provider' },
     { num: 5, title: 'OpenClaw' },
-    { num: 6, title: 'Telegram' },
-    { num: 7, title: 'Zalo' },
+    { num: 6, title: 'Telegram Agent' },
+    { num: 7, title: 'Zalo Agent' },
     { num: 8, title: 'Remote Access' },
     { num: 9, title: 'Xem lại' },
     { num: 10, title: 'Hoàn tất' }
@@ -779,9 +804,19 @@ export default function SetupWizardPage() {
           <div>
             <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#f1f5f9', marginBottom: '1rem' }}>Step 4: AI Provider / LLM API</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ padding: '0.9rem 1rem', border: '1px solid #334155', borderRadius: '0.5rem', background: '#172033', color: '#cbd5e1', fontSize: '0.875rem', lineHeight: 1.55 }}>
+                <strong style={{ color: '#f8fafc' }}>Cấu hình trực tiếp:</strong>{' '}
+                Thêm API key do chính provider cấp, ví dụ OpenAI, Gemini, Groq hoặc Anthropic.
+                OpenClaw sẽ gọi provider được chọn mà không cần 9router.
+                <br />
+                <strong style={{ color: '#f8fafc' }}>9router (tùy chọn):</strong>{' '}
+                Chỉ thêm như một provider OpenAI-compatible khi bạn muốn gom nhiều provider/tài khoản,
+                theo dõi quota và tự động fallback. Base URL mặc định là{' '}
+                <code>http://127.0.0.1:20128/v1</code>.
+              </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
                 <div style={{ color: '#94a3b8', fontSize: '0.875rem' }}>
-                  Có thể khai báo nhiều provider và nhiều model. Provider có model mặc định sẽ được OpenClaw sử dụng.
+                  Có thể khai báo nhiều provider và nhiều model. Provider đang Active sẽ được OpenClaw sử dụng.
                 </div>
                 <button type="button" onClick={newProvider} style={{ padding: '0.55rem 0.9rem', background: '#0e7490', color: '#fff', border: 0, borderRadius: '0.4rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                   + Provider
@@ -873,7 +908,9 @@ export default function SetupWizardPage() {
                 </div>
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>API Key:</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>
+                  API Key của provider:
+                </label>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                   <input
                     type={showSecrets.ai_key ? 'text' : 'password'}
@@ -898,6 +935,11 @@ export default function SetupWizardPage() {
                       Clear
                     </button>
                   )}
+                </div>
+                <div style={{ color: '#94a3b8', fontSize: '0.8rem', marginTop: '0.4rem', lineHeight: 1.45 }}>
+                  Lấy key từ trang quản trị của provider tương ứng. Key được lưu ở cấu hình riêng trên máy,
+                  không gửi xuống trình duyệt sau khi lưu; giao diện chỉ hiển thị dạng che và fingerprint để đối chiếu.
+                  Để trống khi sửa provider sẽ giữ nguyên key hiện có. Nút Clear sẽ xóa key đã lưu.
                 </div>
               </div>
 
@@ -926,14 +968,48 @@ export default function SetupWizardPage() {
         {/* STEP 5: OPENCLAW */}
         {step === 5 && (
           <div>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#f1f5f9', marginBottom: '1rem' }}>Step 5: Tích Hợp OpenClaw Runtime</h2>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#f1f5f9', marginBottom: '1rem' }}>Step 5: OpenClaw KNX AI Agent</h2>
             {integrations?.openclaw && (
               <div style={{ background: '#1e293b', padding: '1rem', borderRadius: '0.5rem', marginBottom: '1rem', fontSize: '0.875rem' }}>
-                <div><strong>Runtime Installed:</strong> {integrations.openclaw.runtime_installed ? '✓ Yes' : '✗ No'}</div>
-                <div><strong>Executable:</strong> {integrations.openclaw.executable_path || 'None'}</div>
-                <div><strong>9router Service:</strong> {integrations.openclaw.service_status}</div>
+                <div><strong>OpenClaw Runtime:</strong> {integrations.openclaw.runtime_installed ? '✓ Installed' : '✗ Not installed'}</div>
+                <div><strong>OpenClaw Executable:</strong> {integrations.openclaw.executable_path || 'None'}</div>
+                <div><strong>OpenClaw Service:</strong> {integrations.openclaw.openclaw_service_status || integrations.openclaw.service_status}</div>
+                <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #334155' }}>
+                  <strong>9router AI Gateway:</strong>{' '}
+                  {integrations.openclaw.router?.installed ? '✓ Installed' : 'Optional / not installed'}
+                </div>
+                <div><strong>9router Service:</strong> {integrations.openclaw.router?.service_status || 'inactive'}</div>
+                <div><strong>9router API:</strong> {integrations.openclaw.router?.endpoint || 'http://127.0.0.1:20128/v1'}</div>
+                <div style={{ color: '#94a3b8', marginTop: '0.35rem' }}>
+                  9router là tùy chọn. Nó gom các provider AI và tự động fallback khi hết quota;
+                  OpenClaw cũng có thể dùng trực tiếp provider đã cấu hình ở Step 4.
+                </div>
                 <div><strong>Workspace:</strong> {integrations.openclaw.workspace_path}</div>
                 <div><strong>Skill Symlink Valid:</strong> {integrations.openclaw.skills_symlink_valid ? '✓ Valid' : '⚠ Link Missing/Outdated'}</div>
+                <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #334155' }}>
+                  <strong>KNX AI Agent Definition:</strong>{' '}
+                  {integrations.openclaw.workspace_definition?.ready
+                    ? '✓ Ready'
+                    : '⚠ Missing files'}
+                </div>
+                {!integrations.openclaw.workspace_definition?.ready && (
+                  <>
+                    <div style={{ color: '#f59e0b', marginTop: '0.35rem' }}>
+                      Thiếu: {(integrations.openclaw.workspace_definition?.missing_files || []).join(', ') || 'Không đọc được trạng thái'}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={bootstrapOpenClawWorkspace}
+                      disabled={saving || !integrations.openclaw.workspace_definition?.template_available}
+                      style={{ marginTop: '0.65rem', padding: '0.55rem 0.85rem', background: '#0e7490', color: '#fff', border: 0, borderRadius: '0.375rem', cursor: 'pointer' }}
+                    >
+                      Tạo các file agent còn thiếu
+                    </button>
+                  </>
+                )}
+                <div style={{ color: '#94a3b8', marginTop: '0.4rem' }}>
+                  Bao gồm AGENTS.md, IDENTITY.md, SOUL.md và TOOLS.md. Hệ thống chỉ tạo file thiếu, không ghi đè nội dung đã tùy chỉnh.
+                </div>
               </div>
             )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -948,9 +1024,9 @@ export default function SetupWizardPage() {
               {[
                 ['runtime_path', 'Đường dẫn runtime', '/usr/local/bin/openclaw'],
                 ['workspace_path', 'Workspace', '/home/user/.openclaw/workspace'],
-                ['provider', 'AI provider', '9router'],
-                ['model', 'Model', '9router/model-name'],
-                ['base_url', 'Provider base URL', 'http://127.0.0.1:20128/v1']
+                ['provider', 'Provider ID OpenClaw sử dụng', '9router'],
+                ['model', 'Model/route OpenClaw sử dụng', '9router/model-name'],
+                ['base_url', 'OpenAI-compatible provider URL', 'http://127.0.0.1:20128/v1']
               ].map(([field, label, placeholder]) => (
                 <div key={field}>
                   <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>{label}</label>
@@ -1006,7 +1082,10 @@ export default function SetupWizardPage() {
         {/* STEP 6: TELEGRAM */}
         {step === 6 && (
           <div>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#f1f5f9', marginBottom: '1rem' }}>Step 6: Tích Hợp Telegram Notification</h2>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#f1f5f9', marginBottom: '1rem' }}>Step 6: Telegram KNX AI Agent</h2>
+            <p style={{ color: '#94a3b8', fontSize: '0.875rem', marginBottom: '1rem' }}>
+              Telegram là kênh hội thoại để người dùng gửi lệnh tự nhiên cho OpenClaw KNX AI Agent, không chỉ là kênh thông báo.
+            </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#f8fafc', cursor: 'pointer' }}>
                 <input
@@ -1014,7 +1093,7 @@ export default function SetupWizardPage() {
                   checked={telegramForm.enabled}
                   onChange={e => setTelegramForm({ ...telegramForm, enabled: e.target.checked })}
                 />
-                Kích hoạt Telegram Notification
+                Kích hoạt kênh Telegram cho KNX AI Agent
               </label>
               <div>
                 <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Bot Token:</label>
@@ -1085,7 +1164,10 @@ export default function SetupWizardPage() {
         {/* STEP 7: ZALO */}
         {step === 7 && (
           <div>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#f1f5f9', marginBottom: '1rem' }}>Step 7: Tích Hợp Zalo Notification / Webhook</h2>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#f1f5f9', marginBottom: '1rem' }}>Step 7: Zalo KNX AI Agent</h2>
+            <p style={{ color: '#94a3b8', fontSize: '0.875rem', marginBottom: '1rem' }}>
+              Zalo Bot và Zalo Personal là các kênh hội thoại để điều khiển, giám sát KNX và sử dụng tools/skills của cùng OpenClaw Agent.
+            </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#f8fafc', cursor: 'pointer' }}>
                 <input

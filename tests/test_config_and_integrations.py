@@ -47,6 +47,12 @@ def test_openclaw_adapter(tmp_path):
     project = tmp_path / "project"
     credentials.mkdir(parents=True)
     (project / "skills").mkdir(parents=True)
+    template_dir = project / "openclaw" / "workspace-template"
+    template_dir.mkdir(parents=True)
+    for name in ("AGENTS.md", "IDENTITY.md", "SOUL.md", "TOOLS.md"):
+        (template_dir / name).write_text(
+            f"# Template {name}\n", encoding="utf-8"
+        )
     (openclaw_dir / "openclaw.json").write_text(json.dumps({
         "agents": {"defaults": {
             "workspace": str(workspace),
@@ -66,10 +72,32 @@ def test_openclaw_adapter(tmp_path):
         openclaw_dir=openclaw_dir,
         project_root=project,
     )
+    workspace.mkdir(parents=True)
+    (workspace / "AGENTS.md").write_text(
+        "# Existing custom agent\n", encoding="utf-8"
+    )
+    bootstrap = oc_adapter.bootstrap_workspace_safe()
+    assert bootstrap["created"] == ["IDENTITY.md", "SOUL.md", "TOOLS.md"]
+    assert bootstrap["skipped_existing"] == ["AGENTS.md"]
+    assert (workspace / "AGENTS.md").read_text(
+        encoding="utf-8"
+    ) == "# Existing custom agent\n"
+    assert bootstrap["workspace"]["ready"] is True
+    assert bootstrap["skills_symlink_valid"] is True
+    second_bootstrap = oc_adapter.bootstrap_workspace_safe()
+    assert second_bootstrap["created"] == []
+    assert second_bootstrap["skipped_existing"] == [
+        "AGENTS.md", "IDENTITY.md", "SOUL.md", "TOOLS.md"
+    ]
     status = oc_adapter.get_status()
     assert "runtime_installed" in status
     assert "service_status" in status
+    assert "openclaw_service_status" in status
+    assert status["router"]["endpoint"] == "http://127.0.0.1:20128/v1"
+    assert "installed" in status["router"]
+    assert "service_status" in status["router"]
     assert "skills_symlink_valid" in status
+    assert status["workspace_definition"]["ready"] is True
     assert status["provider_metadata"]["provider"] == "local"
     assert status["provider_metadata"]["model"] == "local/test-model"
     assert status["provider_metadata"]["api_key_configured"] is True

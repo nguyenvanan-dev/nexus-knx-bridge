@@ -12,6 +12,7 @@ HOME_DIR = Path.home()
 OPENCLAW_DIR = HOME_DIR / ".openclaw"
 OPENCLAW_CONFIG = OPENCLAW_DIR / "openclaw.json"
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+WORKSPACE_TEMPLATE_FILES = ("AGENTS.md", "IDENTITY.md", "SOUL.md", "TOOLS.md")
 
 
 class OpenClawConfigService:
@@ -53,6 +54,18 @@ class OpenClawConfigService:
                     return "active (process)"
             except Exception:
                 pass
+        if name == "openclaw-gateway.service":
+            try:
+                process = subprocess.run(
+                    ["pgrep", "-f", "(^|/)openclaw( |$)"],
+                    capture_output=True,
+                    text=True,
+                    timeout=2,
+                )
+                if process.returncode == 0 and process.stdout.strip():
+                    return "active (process)"
+            except Exception:
+                pass
         return "inactive"
 
     def _load_config(self) -> Dict[str, Any]:
@@ -61,6 +74,102 @@ class OpenClawConfigService:
             return data if isinstance(data, dict) else {}
         except Exception:
             return {}
+
+    def _workspace_path(self, config: Optional[Dict[str, Any]] = None) -> Path:
+        data = config if isinstance(config, dict) else self._load_config()
+        return Path(
+            data.get("agents", {}).get("defaults", {}).get(
+                "workspace", self.openclaw_dir / "workspace"
+            )
+        ).expanduser()
+
+    @staticmethod
+    def _file_digest(path: Path) -> str:
+        try:
+            return hashlib.sha256(path.read_bytes()).hexdigest()
+        except Exception:
+            return ""
+
+    def get_workspace_status(self) -> Dict[str, Any]:
+        workspace = self._workspace_path()
+        template_dir = self.project_root / "openclaw" / "workspace-template"
+        files = []
+        for name in WORKSPACE_TEMPLATE_FILES:
+            target = workspace / name
+            template = template_dir / name
+            present = target.is_file()
+            template_present = template.is_file()
+            files.append({
+                "name": name,
+                "present": present,
+                "template_available": template_present,
+                "matches_template": (
+                    present
+                    and template_present
+                    and self._file_digest(target) == self._file_digest(template)
+                ),
+            })
+        missing = [item["name"] for item in files if not item["present"]]
+        return {
+            "workspace_path": str(workspace),
+            "template_path": str(template_dir),
+            "template_available": all(
+                item["template_available"] for item in files
+            ),
+            "ready": not missing,
+            "missing_files": missing,
+            "files": files,
+        }
+
+    def bootstrap_workspace_safe(self) -> Dict[str, Any]:
+        workspace = self._workspace_path().resolve()
+        home = self.home_dir.resolve()
+        if workspace != home and home not in workspace.parents:
+            raise ValueError("OpenClaw workspace phải nằm trong thư mục HOME.")
+
+        template_dir = self.project_root / "openclaw" / "workspace-template"
+        missing_templates = [
+            name for name in WORKSPACE_TEMPLATE_FILES
+            if not (template_dir / name).is_file()
+        ]
+        if missing_templates:
+            raise ValueError(
+                "Thiếu workspace template: " + ", ".join(missing_templates)
+            )
+
+        workspace.mkdir(parents=True, exist_ok=True)
+        os.chmod(workspace, 0o700)
+        created = []
+        skipped = []
+        for name in WORKSPACE_TEMPLATE_FILES:
+            target = workspace / name
+            if target.exists() or target.is_symlink():
+                skipped.append(name)
+                continue
+            fd, temp_path = tempfile.mkstemp(
+                dir=str(workspace), prefix=f".{name}.", suffix=".tmp"
+            )
+            try:
+                with os.fdopen(fd, "wb") as handle:
+                    handle.write((template_dir / name).read_bytes())
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.chmod(temp_path, 0o600)
+                os.replace(temp_path, target)
+                created.append(name)
+            except Exception:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+                raise
+
+        symlink_valid = self.ensure_skills_symlink()
+        return {
+            "ok": True,
+            "created": created,
+            "skipped_existing": skipped,
+            "skills_symlink_valid": symlink_valid,
+            "workspace": self.get_workspace_status(),
+        }
 
     def _pairing_status(self, channel: str, channel_config: Dict[str, Any]) -> Dict[str, Any]:
         allow_from = channel_config.get("allowFrom") or channel_config.get("groupAllowFrom") or []
@@ -101,13 +210,10 @@ class OpenClawConfigService:
         }
 
     def get_status(self) -> Dict[str, Any]:
-        executable = shutil.which("openclaw") or shutil.which("9router")
+        openclaw_executable = shutil.which("openclaw")
+        router_executable = shutil.which("9router")
         config = self._load_config()
-        workspace = Path(
-            config.get("agents", {}).get("defaults", {}).get(
-                "workspace", self.openclaw_dir / "workspace"
-            )
-        ).expanduser()
+        workspace = self._workspace_path(config)
         skills_target = workspace / "skills"
         symlink_valid = False
         if skills_target.is_symlink():
@@ -144,11 +250,21 @@ class OpenClawConfigService:
         channels = config.get("channels", {})
 
         return {
-            "runtime_installed": executable is not None,
-            "executable_path": executable or "",
-            "service_status": self._service_state("9router.service"),
+            "runtime_installed": openclaw_executable is not None,
+            "executable_path": openclaw_executable or "",
+            "service_status": self._service_state("openclaw-gateway.service"),
+            "openclaw_service_status": self._service_state(
+                "openclaw-gateway.service"
+            ),
+            "router": {
+                "installed": router_executable is not None,
+                "executable_path": router_executable or "",
+                "service_status": self._service_state("9router.service"),
+                "endpoint": "http://127.0.0.1:20128/v1",
+            },
             "workspace_path": str(workspace),
             "workspace_exists": workspace.exists(),
+            "workspace_definition": self.get_workspace_status(),
             "skills_symlink_valid": symlink_valid,
             "config_present": self.config_path.exists(),
             "provider_metadata": {
@@ -174,12 +290,7 @@ class OpenClawConfigService:
         }
 
     def ensure_skills_symlink(self) -> bool:
-        workspace = Path(
-            self._load_config()
-            .get("agents", {})
-            .get("defaults", {})
-            .get("workspace", self.openclaw_dir / "workspace")
-        ).expanduser()
+        workspace = self._workspace_path()
         workspace_skills = workspace / "skills"
         repo_skills = self.project_root / "skills"
         if not repo_skills.exists():

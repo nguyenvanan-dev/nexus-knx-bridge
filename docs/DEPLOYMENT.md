@@ -6,7 +6,8 @@
 - Python 3.10+
 - Node.js 18+
 - KNX/IP gateway for physical control
-- OpenClaw and 9router when AI/chat integrations are enabled
+- OpenClaw when agent, skills or Telegram/Zalo integrations are enabled
+- 9router when quota-aware AI provider routing and fallback are desired
 
 The repository can be installed in any directory. Commands below assume the
 current shell is already inside the cloned repository.
@@ -31,11 +32,17 @@ grep '^SETUP_BOOTSTRAP_TOKEN=' .env
 
 - `knx-bridge.service`: FastAPI backend on port 5055
 - `knx-frontend.service`: Next.js frontend on port 3000
-- `9router.service`: optional AI provider gateway
-- OpenClaw gateway/runtime: optional, required for chat channel integrations
+- `9router.service`: optional OpenAI-compatible gateway that routes across the
+  user's configured AI providers and falls back when quota is exhausted
+- OpenClaw gateway/runtime: optional agent runtime for skills and chat channels;
+  it may use 9router's API or connect to another provider directly
 
 The installer creates backend/frontend user services and refuses to create
 duplicates when system-level services already exist.
+
+When OpenClaw is already installed, the installer also creates only the missing
+KNX AI Agent workspace files from `openclaw/workspace-template/`. Existing
+workspace files and all credentials are preserved.
 
 ## Verification
 

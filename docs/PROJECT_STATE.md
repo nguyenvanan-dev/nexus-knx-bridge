@@ -10,6 +10,9 @@ and automated checks take precedence if this document becomes stale.
 - Runtime: FastAPI backend, Next.js frontend, SQLite, OpenClaw integrations
 - Canonical device and scene storage: SQLite
 - Legacy `devices.json` and `scenes.json` runtime paths: retired
+- OpenClaw KNX AI Agent workspace template: implemented
+- Zalo and Telegram: primary conversational channels for the KNX Agent
+- 9router: optional AI provider router, not an agent runtime
 
 ## Implemented
 

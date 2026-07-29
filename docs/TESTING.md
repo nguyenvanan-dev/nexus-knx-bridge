@@ -8,7 +8,8 @@
 ## 2. Manual Verification Checklist (Phase D)
 The following steps are required to finalize Phase D (Production Physical Deployment).
 
-- [x] **Backend API:** `curl localhost:5055/health` -> OK (13 devices).
+- [x] **Backend API:** `curl localhost:5055/health` -> returns a healthy response.
+- [x] **Workspace bootstrap:** Creates missing agent files and preserves custom files.
 - [x] **Database:** SQLite WAL mode active, no locked DB errors.
 - [x] **Systemd:** `knx-bridge.service` survives restart and binds to port 5055.
 - [ ] **KNX Physical Test:** Trigger a physical switch via REST API.

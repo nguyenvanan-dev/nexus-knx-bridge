@@ -36,7 +36,13 @@ This document tracks the high-level phases and milestones of the project.
 - Shifted all RBAC to OpenClaw Gateway `ownerAllowFrom`.
 
 ## Phase D: Production Deployment (CURRENT)
-- **Sprint 10:** Target Raspberry Pi deployment (`10.1.10.105`).
+- **Sprint 10:** Target Raspberry Pi deployment.
 - Systemd service integration for `knx-bridge`.
 - Resolved `uvicorn` port conflicts.
 - **Remaining:** End-to-end physical verification (KNX bus physical actuation via chat adapters).
+
+## v1.0 Release Candidate
+- Added a portable OpenClaw KNX AI Agent workspace template.
+- Added safe workspace bootstrap that preserves existing custom files.
+- Clarified that Zalo and Telegram are conversational KNX Agent channels.
+- Separated the optional 9router provider gateway from the OpenClaw runtime.

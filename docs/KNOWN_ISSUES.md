@@ -7,8 +7,9 @@
   confirmation.
 - Zalo Personal uses an unofficial login mechanism. Use a secondary account,
   restrict allowed groups and understand the account restriction risk.
-- OpenClaw and 9router are external runtimes; the installer validates and
-  configures integration but does not silently install or restart them.
+- OpenClaw and 9router are separate external runtimes. OpenClaw handles agents,
+  chat channels and skills; 9router handles AI provider routing and fallback.
+  The installer does not silently install or restart either runtime.
 
 ## Technical Debt
 

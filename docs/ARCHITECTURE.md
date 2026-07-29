@@ -1,15 +1,37 @@
 # Project Architecture
 
 ## 1. High-Level Overview
-- **Project Name:** KNX Smart Home Platform (`knx-bridge`)
-- **Purpose:** Connect physical KNX infrastructure to an LLM-driven AI Assistant (via OpenClaw).
-- **Core Components:** FastAPI, `xknx`, SQLite, OpenClaw AI Gateway.
+- **Project Name:** NEXUS KNX Bridge
+- **Primary Product:** OpenClaw KNX AI Agent accessed through Zalo and Telegram.
+- **Purpose:** Control, monitor and operate physical KNX infrastructure through
+  natural-language conversations.
+- **Administration Layer:** Next.js web UI for setup, ETS import, device
+  registry, diagnostics and system administration.
+- **Core Components:** OpenClaw, KNX tools/skills, FastAPI, `xknx`, SQLite and
+  Next.js.
+
+```text
+Zalo Bot -------\
+                 -> OpenClaw KNX AI Agent -> Tools/Skills -> FastAPI -> KNX/IP
+Telegram Bot ---/                 |
+                                  -> Memory and approved proposals
+
+Web Admin -------------------------------------> FastAPI / SQLite
+AI provider -> OpenClaw
+AI providers -> optional 9router -> OpenClaw
+```
 
 ## 2. Component Architecture
 - **FastAPI:** Core REST API bridging commands to the KNX bus (`127.0.0.1:5055`).
 - **KNX Tunnel:** Connection to the gateway configured at runtime via `xknx`.
-- **OpenClaw Gateway:** AI orchestrator processing natural language and translating to API calls.
-- **Messaging Adapters:** Telegram (native to OpenClaw) and Zalo (webhook).
+- **OpenClaw Runtime:** KNX AI Agent orchestrator for conversations, memory,
+  tools and skills.
+- **Messaging Channels:** Telegram and Zalo are conversational interfaces to the
+  same KNX AI Agent, not notification-only adapters.
+- **9router:** Optional OpenAI-compatible provider router for quota-aware
+  fallback. It is not the agent runtime.
+- **Next.js:** Administration UI added after the agent to simplify setup and
+  operation.
 - **Background Workers:**
   - `background_queue.py`
   - `notification_engine.py`

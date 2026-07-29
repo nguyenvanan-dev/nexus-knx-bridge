@@ -24,5 +24,5 @@ Hãy copy bảng này và tick [x] vào cột `Result` nếu hệ thống vượ
 
 | Test Case | Steps | Expected | Actual | Result |
 |---|---|---|---|---|
-| **3.1. DB Reconnect** | 1. Chat tạo vài context.<br>2. `systemctl restart smarthome-db` (hoặc restart service DB giả lập).<br>3. Tiếp tục chat tiếp ngữ cảnh. | Bot không bị crash, tự động kết nối lại DB và nhớ câu chuyện trước đó. | ... | `[ ]` |
+| **3.1. DB Reconnect** | 1. Chạy test với SQLite tạm.<br>2. Đóng và mở lại repository/connection trong test harness.<br>3. Tiếp tục chat với cùng ngữ cảnh. | Agent không bị crash, kết nối lại DB và giữ được dữ liệu đã commit. Không thao tác database production. | ... | `[ ]` |
 | **3.2. Cold Restart** | 1. Rút điện Raspberry Pi / Reboot Server.<br>2. Gửi lệnh chat ngay khi server lên. | AI tự động load lại Preference, Summary từ SQLite, tiếp tục hoạt động. | ... | `[ ]` |

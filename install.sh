@@ -17,7 +17,7 @@ PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$PROJECT_DIR"
 
 # 1. Check Dependencies
-echo "[1/6] Checking system requirements..."
+echo "[1/7] Checking system requirements..."
 command -v python3 >/dev/null 2>&1 || { echo "Python3 is required but not installed."; exit 1; }
 command -v node >/dev/null 2>&1 || { echo "Node.js is required but not installed."; exit 1; }
 command -v npm >/dev/null 2>&1 || { echo "npm is required but not installed."; exit 1; }
@@ -68,7 +68,7 @@ ENV_EOF
 fi
 
 # 2. Setup Python Virtual Environment
-echo "[2/6] Setting up Python virtual environment..."
+echo "[2/7] Setting up Python virtual environment..."
 if [ ! -d ".venv" ]; then
     python3 -m venv .venv
 fi
@@ -79,13 +79,13 @@ if [ -f "requirements.txt" ]; then
 fi
 
 # 3. Setup Frontend Dependencies & Build
-echo "[3/6] Installing frontend dependencies & building production bundle..."
+echo "[3/7] Installing frontend dependencies & building production bundle..."
 if [ -d "frontend" ]; then
     (cd frontend && npm install && npm run build)
 fi
 
 # 4. Prepare Centralized Configuration Baseline
-echo "[4/6] Initializing secure configuration baseline..."
+echo "[4/7] Initializing secure configuration baseline..."
 python3 -c '
 from services.config_service import config_service
 cfg = config_service.load_raw_config()
@@ -93,8 +93,21 @@ print("Config baseline initialized OK")
 '
 chmod 600 config.json 2>/dev/null || true
 
-# 5. Generate Systemd User Services
-echo "[5/6] Generating Systemd user service files..."
+# 5. Bootstrap OpenClaw workspace when OpenClaw is already present.
+echo "[5/7] Checking optional OpenClaw workspace..."
+if command -v openclaw >/dev/null 2>&1 || [ -d "$HOME/.openclaw" ]; then
+    python3 -c '
+from services.openclaw_config_service import openclaw_config_service
+result = openclaw_config_service.bootstrap_workspace_safe()
+print("OpenClaw workspace ready. Created:", ", ".join(result["created"]) or "none")
+print("Existing files preserved:", ", ".join(result["skipped_existing"]) or "none")
+'
+else
+    echo "OpenClaw is not installed; workspace bootstrap skipped (optional)."
+fi
+
+# 6. Generate Systemd User Services
+echo "[6/7] Generating Systemd user service files..."
 SYSTEMD_USER_DIR="$HOME/.config/systemd/user"
 mkdir -p "$SYSTEMD_USER_DIR"
 
@@ -144,7 +157,7 @@ SERVICE_EOF
 
 systemctl --user daemon-reload || true
 
-echo "[6/6] Installation completed successfully!"
+echo "[7/7] Installation completed successfully!"
 echo "To start services:"
 echo "  systemctl --user enable --now knx-bridge.service knx-frontend.service"
 echo "=================================================="

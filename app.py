@@ -4195,6 +4195,12 @@ async def setup_category(
         openclaw_status = openclaw_config_service.get_status()
         if openclaw.get("enabled") and not openclaw_status["runtime_installed"]:
             blockers.append("OpenClaw đang bật nhưng runtime chưa được cài")
+        workspace_definition = openclaw_status.get("workspace_definition", {})
+        if openclaw.get("enabled") and not workspace_definition.get("ready"):
+            missing = ", ".join(workspace_definition.get("missing_files", []))
+            blockers.append(
+                f"OpenClaw workspace thiếu file định nghĩa agent: {missing}"
+            )
         zalouser = zalouser_service.get_status()
         if zalouser["enabled"] and not zalouser["credential_present"]:
             blockers.append(
@@ -4328,6 +4334,23 @@ async def test_openclaw_status(
     setup_user: dict = Depends(require_setup_access),
 ):
     return openclaw_config_service.get_status()
+
+
+@app.post("/api/setup/openclaw/workspace/bootstrap")
+async def bootstrap_openclaw_workspace(
+    payload: dict,
+    setup_user: dict = Depends(require_setup_access),
+):
+    if payload.get("confirm") is not True:
+        raise HTTPException(
+            status_code=400,
+            detail="Cần confirm=true để tạo các file agent còn thiếu.",
+        )
+    try:
+        return openclaw_config_service.bootstrap_workspace_safe()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
 
 @app.get("/api/setup/tailscale/status")
 async def test_tailscale_status(
