@@ -94,6 +94,17 @@ def test_openclaw_adapter(tmp_path):
     updated = json.loads((openclaw_dir / "openclaw.json").read_text())
     assert updated["agents"]["defaults"]["model"] == "local/new-model"
     assert updated["channels"]["telegram"]["allowFrom"] == ["owner", "family"]
+    assert oc_adapter.update_channel_safe(
+        "zalo",
+        True,
+        token="zalo-test-token",
+        webhook_url="https://example.test/zalo",
+        webhook_secret="zalo-webhook-test-secret",
+        allow_from=["owner"],
+    )
+    updated = json.loads((openclaw_dir / "openclaw.json").read_text())
+    assert updated["channels"]["zalo"]["botToken"] == "zalo-test-token"
+    assert updated["channels"]["zalo"]["webhookSecret"] == "zalo-webhook-test-secret"
     assert oc_adapter.update_provider_credential_safe(
         "groq", "unit_test_provider_key_123456"
     )
@@ -104,6 +115,35 @@ def test_openclaw_adapter(tmp_path):
     )
     assert groq["masked"].startswith("unit")
     assert "unit_test_provider_key_123456" not in json.dumps(refreshed)
+    created = oc_adapter.upsert_provider_config_safe(
+        provider="company-ai",
+        display_name="Company AI",
+        api_type="openai_compatible",
+        base_url="https://ai.example.test/v1",
+        models=["model-a", {"id": "model-b", "name": "Model B"}],
+        default_model="model-b",
+        timeout_seconds=90,
+        api_key="provider-test-secret",
+    )
+    assert created["id"] == "company-ai"
+    assert created["default_model"] == "model-b"
+    assert [item["id"] for item in created["models"]] == ["model-a", "model-b"]
+    assert created["masked"].startswith("prov")
+    assert "provider-test-secret" not in json.dumps(created)
+    with pytest.raises(ValueError, match="đang được chọn"):
+        oc_adapter.delete_provider_config_safe("company-ai")
+    oc_adapter.upsert_provider_config_safe(
+        provider="local",
+        default_model="new-model",
+        models=["new-model"],
+    )
+    assert oc_adapter.delete_provider_config_safe("company-ai")
+    assert all(
+        item["id"] != "company-ai"
+        for item in oc_adapter.list_provider_configs_safe()
+    )
+    with pytest.raises(ValueError, match="Provider ID"):
+        oc_adapter.upsert_provider_config_safe(provider="../invalid")
 
 
 def test_extended_setup_schema(tmp_path):
@@ -119,6 +159,18 @@ def test_extended_setup_schema(tmp_path):
         "remote_access", {"tailscale_enabled": True}
     )
     assert remote["tailscale_enabled"] is True
+    cs.update_category_config(
+        "zalo",
+        {
+            "bot_token": "zalo-unit-test-token",
+            "webhook_url": "https://example.test/zalo",
+            "webhook_secret": "zalo-unit-test-secret",
+        },
+    )
+    public_zalo = cs.get_public_config()["zalo"]
+    assert public_zalo["bot_token"]["configured"] is True
+    assert public_zalo["webhook_secret"]["configured"] is True
+    assert "zalo-unit-test-token" not in json.dumps(public_zalo)
     frontend = cs.update_category_config(
         "frontend", {"backend_url": "http://127.0.0.1:5055", "frontend_port": 3000}
     )

@@ -20,7 +20,9 @@ RUNTIME_ENV_KEYS = {
         "chat_id": "TELEGRAM_CHAT_ID",
     },
     "zalo": {
+        "bot_token": "ZALO_BOT_TOKEN",
         "webhook_url": "ZALO_WEBHOOK_URL",
+        "webhook_secret": "ZALO_WEBHOOK_SECRET",
     },
 }
 
@@ -78,7 +80,9 @@ DEFAULT_CONFIG = {
     },
     "zalo": {
         "enabled": False,
+        "bot_token": "",
         "webhook_url": "",
+        "webhook_secret": "",
         "integration_mode": "webhook",
         "allow_from": []
     },
@@ -106,7 +110,7 @@ DEFAULT_CONFIG = {
 SECRET_FIELDS = {
     "ai": ["api_key"],
     "telegram": ["bot_token"],
-    "zalo": ["webhook_url"]
+    "zalo": ["bot_token", "webhook_url", "webhook_secret"]
 }
 
 class ConfigService:
@@ -213,6 +217,9 @@ class ConfigService:
                 validated["allow_from"] = self._validate_allow_list(data["allow_from"])
 
         elif category == "zalo":
+            for secret_field in ("bot_token", "webhook_secret"):
+                if secret_field in data:
+                    validated[secret_field] = data[secret_field]
             if "webhook_url" in data and data["webhook_url"] and data["webhook_url"] != "__CLEAR__":
                 url = str(data["webhook_url"]).strip()
                 if not (url.startswith("http://") or url.startswith("https://")):

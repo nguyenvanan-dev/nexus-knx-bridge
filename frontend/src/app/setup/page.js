@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { showToast, showDialog } from '../../utils/ui';
+import { showToast } from '../../utils/ui';
 
 export default function SetupWizardPage() {
   const router = useRouter();
@@ -45,6 +45,18 @@ export default function SetupWizardPage() {
     base_url: 'https://api.openai.com/v1',
     api_key: ''
   });
+  const [providerEditor, setProviderEditor] = useState({
+    id: 'openai',
+    display_name: 'OpenAI',
+    api_type: 'openai_compatible',
+    base_url: 'https://api.openai.com/v1',
+    models_text: 'gpt-4o-mini',
+    default_model: 'gpt-4o-mini',
+    timeout_seconds: 60,
+    api_key: '',
+    configured: false,
+    active: false
+  });
 
   const [openclawForm, setOpenclawForm] = useState({
     enabled: false,
@@ -64,7 +76,9 @@ export default function SetupWizardPage() {
 
   const [zaloForm, setZaloForm] = useState({
     enabled: false,
+    bot_token: '',
     webhook_url: '',
+    webhook_secret: '',
     integration_mode: 'webhook',
     allow_from: []
   });
@@ -81,6 +95,14 @@ export default function SetupWizardPage() {
     if (step >= 4) refreshIntegrations();
   }, [step]);
 
+  useEffect(() => {
+    const providers = integrations?.ai_provider_configs;
+    if (step === 4 && Array.isArray(providers) && providers.length > 0) {
+      const selected = providers.find(item => item.id === providerEditor.id);
+      selectProvider(selected || providers.find(item => item.active) || providers[0]);
+    }
+  }, [integrations, step]);
+
   const loadSetupStatus = async () => {
     setLoading(true);
     try {
@@ -92,7 +114,13 @@ export default function SetupWizardPage() {
         if (data.config.knx) setKnxForm(prev => ({ ...prev, ...data.config.knx }));
         if (data.config.ai) setAiForm(prev => ({ ...prev, ...data.config.ai, api_key: '' }));
         if (data.config.telegram) setTelegramForm(prev => ({ ...prev, ...data.config.telegram, bot_token: '' }));
-        if (data.config.zalo) setZaloForm(prev => ({ ...prev, ...data.config.zalo, webhook_url: '' }));
+        if (data.config.zalo) setZaloForm(prev => ({
+          ...prev,
+          ...data.config.zalo,
+          bot_token: '',
+          webhook_url: '',
+          webhook_secret: ''
+        }));
         if (data.config.openclaw) setOpenclawForm(prev => ({ ...prev, ...data.config.openclaw }));
         if (data.config.remote_access) setRemoteForm(prev => ({ ...prev, ...data.config.remote_access }));
       }
@@ -120,6 +148,116 @@ export default function SetupWizardPage() {
       setIntegrations(data);
     } catch (error) {
       showToast(error.message, 'warning');
+    }
+  };
+
+  const selectProvider = (item) => {
+    const models = Array.isArray(item.models) ? item.models : [];
+    const normalizedModels = models.map(model => (
+      typeof model === 'string' ? model : model.id
+    )).filter(Boolean);
+    const defaultModel = item.default_model || normalizedModels[0] || '';
+    setProviderEditor({
+      id: item.id || item.provider,
+      display_name: item.display_name || item.provider || item.id,
+      api_type: item.api_type || 'openai_compatible',
+      base_url: item.base_url || '',
+      models_text: normalizedModels.join('\n'),
+      default_model: defaultModel,
+      timeout_seconds: item.timeout_seconds || 60,
+      api_key: '',
+      configured: Boolean(item.configured),
+      active: Boolean(item.active)
+    });
+  };
+
+  const newProvider = () => {
+    setProviderEditor({
+      id: '',
+      display_name: '',
+      api_type: 'openai_compatible',
+      base_url: '',
+      models_text: '',
+      default_model: '',
+      timeout_seconds: 60,
+      api_key: '',
+      configured: false,
+      active: false
+    });
+  };
+
+  const saveProvider = async () => {
+    const providerId = providerEditor.id.trim().toLowerCase();
+    if (!providerId) {
+      showToast('Vui lòng nhập Provider ID', 'warning');
+      return;
+    }
+    const models = providerEditor.models_text
+      .split(/\n|,/)
+      .map(value => value.trim())
+      .filter((value, index, values) => value && values.indexOf(value) === index)
+      .map(id => ({ id, name: id }));
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/setup/ai/providers/${encodeURIComponent(providerId)}`, {
+        method: 'PUT',
+        headers: setupHeaders(),
+        body: JSON.stringify({
+          display_name: providerEditor.display_name || providerId,
+          api_type: providerEditor.api_type,
+          base_url: providerEditor.base_url,
+          models,
+          default_model: providerEditor.default_model,
+          timeout_seconds: Number(providerEditor.timeout_seconds),
+          api_key: providerEditor.api_key === '__CLEAR__' ? '' : providerEditor.api_key,
+          clear_api_key: providerEditor.api_key === '__CLEAR__'
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Không thể lưu provider');
+      setAiForm({
+        provider: providerId === 'google' ? 'gemini' : providerId,
+        model: providerEditor.default_model,
+        base_url: providerEditor.base_url,
+        api_key: ''
+      });
+      await handleSaveStep('ai', {
+        provider: providerId === 'google' ? 'gemini' : providerId,
+        model: providerEditor.default_model,
+        base_url: providerEditor.base_url,
+        api_key: ''
+      }, false);
+      await refreshIntegrations();
+      selectProvider(data.provider);
+      showToast('Đã lưu provider và danh sách model', 'success');
+    } catch (error) {
+      showToast(error.message, 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteProvider = async () => {
+    if (!providerEditor.id || providerEditor.active) return;
+    const confirmed = window.confirm(
+      `Xóa cấu hình ${providerEditor.display_name || providerEditor.id}? API key của provider này cũng bị xóa khỏi OpenClaw.`
+    );
+    if (!confirmed) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/setup/ai/providers/${encodeURIComponent(providerEditor.id)}`, {
+        method: 'DELETE',
+        headers: setupHeaders()
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Không thể xóa provider');
+      newProvider();
+      await refreshIntegrations();
+      showToast('Đã xóa provider', 'success');
+    } catch (error) {
+      showToast(error.message, 'error');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -466,20 +604,23 @@ export default function SetupWizardPage() {
           <div>
             <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#f1f5f9', marginBottom: '1rem' }}>Step 4: AI Provider / LLM API</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {integrations?.ai_providers?.length > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+                <div style={{ color: '#94a3b8', fontSize: '0.875rem' }}>
+                  Có thể khai báo nhiều provider và nhiều model. Provider có model mặc định sẽ được OpenClaw sử dụng.
+                </div>
+                <button type="button" onClick={newProvider} style={{ padding: '0.55rem 0.9rem', background: '#0e7490', color: '#fff', border: 0, borderRadius: '0.4rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                  + Provider
+                </button>
+              </div>
+              {integrations?.ai_provider_configs?.length > 0 && (
                 <div>
                   <div style={{ color: '#94a3b8', fontSize: '0.875rem', marginBottom: '0.5rem' }}>Provider credentials đang có:</div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.65rem' }}>
-                    {integrations.ai_providers.map(item => (
+                    {integrations.ai_provider_configs.map(item => (
                       <button
                         type="button"
-                        key={item.provider}
-                        onClick={() => setAiForm({
-                          ...aiForm,
-                          provider: item.provider,
-                          model: item.models?.[0] || aiForm.model,
-                          api_key: ''
-                        })}
+                        key={item.id}
+                        onClick={() => selectProvider(item)}
                         style={{
                           padding: '0.8rem',
                           textAlign: 'left',
@@ -491,7 +632,7 @@ export default function SetupWizardPage() {
                         }}
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.45rem' }}>
-                          <strong style={{ textTransform: 'capitalize' }}>{item.provider}</strong>
+                          <strong>{item.display_name}</strong>
                           <span style={{ color: item.configured ? '#34d399' : '#f59e0b', fontSize: '0.8rem' }}>
                             {item.active ? 'Active' : item.configured ? 'Configured' : 'Missing'}
                           </span>
@@ -512,47 +653,58 @@ export default function SetupWizardPage() {
                   </div>
                 </div>
               )}
-              <div>
-                <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>AI Provider:</label>
-                <select
-                  value={aiForm.provider}
-                  onChange={e => setAiForm({ ...aiForm, provider: e.target.value })}
-                  style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }}
-                >
-                  <option value="openai">OpenAI</option>
-                  <option value="groq">Groq</option>
-                  <option value="gemini">Google Gemini</option>
-                  <option value="9router">9router</option>
-                  <option value="anthropic">Anthropic</option>
-                  <option value="custom">Custom / Ollama / Local</option>
-                </select>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(160px, 1fr) minmax(180px, 1fr)', gap: '0.75rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Provider ID:</label>
+                  <input value={providerEditor.id} disabled={providerEditor.configured || providerEditor.active} onChange={e => setProviderEditor({ ...providerEditor, id: e.target.value.toLowerCase() })} placeholder="anthropic, ollama, company-ai" style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Tên hiển thị:</label>
+                  <input value={providerEditor.display_name} onChange={e => setProviderEditor({ ...providerEditor, display_name: e.target.value })} placeholder="Anthropic" style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }} />
+                </div>
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Model:</label>
-                <input
-                  type="text"
-                  value={aiForm.model}
-                  onChange={e => setAiForm({ ...aiForm, model: e.target.value })}
-                  style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }}
-                />
+                <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Kiểu API:</label>
+                <select value={providerEditor.api_type} onChange={e => setProviderEditor({ ...providerEditor, api_type: e.target.value })} style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }}>
+                  <option value="openai_compatible">OpenAI-compatible</option>
+                  <option value="anthropic">Anthropic Messages API</option>
+                  <option value="google">Google Gemini API</option>
+                  <option value="local">Local / Ollama</option>
+                </select>
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Base URL:</label>
                 <input
                   type="text"
-                  value={aiForm.base_url}
-                  onChange={e => setAiForm({ ...aiForm, base_url: e.target.value })}
+                  value={providerEditor.base_url}
+                  onChange={e => setProviderEditor({ ...providerEditor, base_url: e.target.value })}
                   style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }}
                 />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '0.75rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Models (mỗi dòng một model):</label>
+                  <textarea value={providerEditor.models_text} onChange={e => setProviderEditor({ ...providerEditor, models_text: e.target.value })} rows={4} placeholder={'model-a\nmodel-b'} style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc', resize: 'vertical' }} />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Model mặc định:</label>
+                    <input value={providerEditor.default_model} onChange={e => setProviderEditor({ ...providerEditor, default_model: e.target.value })} style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }} />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Timeout (giây):</label>
+                    <input type="number" min="1" max="600" value={providerEditor.timeout_seconds} onChange={e => setProviderEditor({ ...providerEditor, timeout_seconds: e.target.value })} style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }} />
+                  </div>
+                </div>
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>API Key:</label>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                   <input
                     type={showSecrets.ai_key ? 'text' : 'password'}
-                    placeholder={integrations?.ai_providers?.find(item => item.provider === aiForm.provider)?.configured ? 'Đã cấu hình - để trống nếu giữ nguyên' : 'Nhập API Key mới'}
-                    value={aiForm.api_key}
-                    onChange={e => setAiForm({ ...aiForm, api_key: e.target.value })}
+                    placeholder={providerEditor.configured ? 'Đã cấu hình - để trống nếu giữ nguyên' : 'Nhập API Key mới'}
+                    value={providerEditor.api_key}
+                    onChange={e => setProviderEditor({ ...providerEditor, api_key: e.target.value })}
                     style={{ flex: 1, padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }}
                   />
                   <button
@@ -562,10 +714,10 @@ export default function SetupWizardPage() {
                   >
                     {showSecrets.ai_key ? 'Ẩn' : 'Hiện'}
                   </button>
-                  {integrations?.ai_providers?.find(item => item.provider === aiForm.provider)?.configured && (
+                  {providerEditor.configured && (
                     <button
                       type="button"
-                      onClick={() => setAiForm({ ...aiForm, api_key: '__CLEAR__' })}
+                      onClick={() => setProviderEditor({ ...providerEditor, api_key: '__CLEAR__' })}
                       style={{ padding: '0.6rem', background: '#991b1b', border: 'none', borderRadius: '0.375rem', color: '#f8fafc', cursor: 'pointer' }}
                     >
                       Clear
@@ -574,15 +726,23 @@ export default function SetupWizardPage() {
                 </div>
               </div>
 
-              <div style={{ marginTop: '0.5rem' }}>
+              <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.65rem' }}>
+                <button type="button" onClick={saveProvider} disabled={saving} style={{ padding: '0.6rem 1rem', background: '#0891b2', color: '#fff', border: 0, borderRadius: '0.375rem', cursor: 'pointer', fontWeight: 600 }}>
+                  Lưu provider
+                </button>
                 <button
                   type="button"
-                  onClick={() => handleRunTest('ai', aiForm)}
+                  onClick={() => handleRunTest('ai', { provider: providerEditor.id, base_url: providerEditor.base_url, api_key: providerEditor.api_key })}
                   disabled={testing}
                   style={{ padding: '0.5rem 1rem', background: '#334155', color: '#f8fafc', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontSize: '0.875rem' }}
                 >
                   {testing ? 'Đang kiểm tra...' : '🔍 Validate Configuration (No API Calls Made)'}
                 </button>
+                {providerEditor.configured && !providerEditor.active && (
+                  <button type="button" onClick={deleteProvider} disabled={saving} style={{ padding: '0.6rem 1rem', background: '#7f1d1d', color: '#fff', border: 0, borderRadius: '0.375rem', cursor: 'pointer' }}>
+                    Xóa provider
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -709,20 +869,6 @@ export default function SetupWizardPage() {
                   {testing ? 'Đang kiểm tra...' : '🔍 Validate Configuration (No Messages Sent)'}
                 </button>
               </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Allow-list (ID, cách nhau bằng dấu phẩy):</label>
-                <input
-                  type="text"
-                  value={Array.isArray(zaloForm.allow_from) ? zaloForm.allow_from.join(', ') : zaloForm.allow_from}
-                  onChange={e => setZaloForm({ ...zaloForm, allow_from: e.target.value })}
-                  style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }}
-                />
-                {integrations?.openclaw?.zalo_pairing && (
-                  <div style={{ color: '#94a3b8', marginTop: '0.4rem' }}>
-                    Pairing requests: {integrations.openclaw.zalo_pairing.pending_pairing_requests} · Allowed: {integrations.openclaw.zalo_pairing.allow_count}
-                  </div>
-                )}
-              </div>
             </div>
           </div>
         )}
@@ -740,6 +886,16 @@ export default function SetupWizardPage() {
                 />
                 Kích hoạt Zalo Webhook / Integration
               </label>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Zalo Bot Token:</label>
+                <input
+                  type={showSecrets.zalo_token ? 'text' : 'password'}
+                  placeholder={status?.config?.zalo?.bot_token?.configured ? 'Đã cấu hình - để trống nếu giữ nguyên' : 'Nhập Bot Token'}
+                  value={zaloForm.bot_token}
+                  onChange={e => setZaloForm({ ...zaloForm, bot_token: e.target.value })}
+                  style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }}
+                />
+              </div>
               <div>
                 <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Zalo Webhook URL:</label>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -767,6 +923,30 @@ export default function SetupWizardPage() {
                     </button>
                   )}
                 </div>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Webhook Secret:</label>
+                <input
+                  type={showSecrets.zalo_secret ? 'text' : 'password'}
+                  placeholder={status?.config?.zalo?.webhook_secret?.configured ? 'Đã cấu hình - để trống nếu giữ nguyên' : 'Nhập webhook secret nếu Zalo cung cấp'}
+                  value={zaloForm.webhook_secret}
+                  onChange={e => setZaloForm({ ...zaloForm, webhook_secret: e.target.value })}
+                  style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.25rem' }}>Allow-list (ID, cách nhau bằng dấu phẩy):</label>
+                <input
+                  type="text"
+                  value={Array.isArray(zaloForm.allow_from) ? zaloForm.allow_from.join(', ') : zaloForm.allow_from}
+                  onChange={e => setZaloForm({ ...zaloForm, allow_from: e.target.value })}
+                  style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '0.375rem', background: '#1e293b', border: '1px solid #334155', color: '#f8fafc' }}
+                />
+                {integrations?.openclaw?.zalo_pairing && (
+                  <div style={{ color: '#94a3b8', marginTop: '0.4rem' }}>
+                    Pairing requests: {integrations.openclaw.zalo_pairing.pending_pairing_requests} · Allowed: {integrations.openclaw.zalo_pairing.allow_count}
+                  </div>
+                )}
               </div>
 
               <div style={{ marginTop: '0.5rem' }}>
@@ -922,11 +1102,11 @@ export default function SetupWizardPage() {
             {step === 4 && (
               <button
                 type="button"
-                onClick={() => handleSaveStep('ai', aiForm)}
+                onClick={() => setStep(prev => prev + 1)}
                 disabled={saving}
                 style={{ padding: '0.6rem 1.5rem', background: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontWeight: 600 }}
               >
-                Lưu & Tiếp theo →
+                Tiếp theo →
               </button>
             )}
             {step === 5 && (

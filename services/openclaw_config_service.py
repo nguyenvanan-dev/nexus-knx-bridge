@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import re
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -263,6 +264,140 @@ class OpenClawConfigService:
         self._atomic_write_config(config)
         return True
 
+    @staticmethod
+    def _provider_slug(value: str) -> str:
+        slug = str(value or "").strip().lower()
+        if not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,63}", slug):
+            raise ValueError(
+                "Provider ID chỉ được chứa chữ thường, số, dấu chấm, gạch dưới hoặc gạch ngang."
+            )
+        return slug
+
+    def list_provider_configs_safe(self) -> list:
+        config = self._load_config()
+        active_model = str(
+            config.get("agents", {}).get("defaults", {}).get("model", "")
+        )
+        active_provider = active_model.split("/", 1)[0] if "/" in active_model else ""
+        providers = config.get("models", {}).get("providers", {})
+        if not isinstance(providers, dict):
+            return []
+        result = []
+        for provider, raw in sorted(providers.items()):
+            details = raw if isinstance(raw, dict) else {}
+            models = []
+            for item in details.get("models", []):
+                if isinstance(item, str):
+                    model_id = item.strip()
+                    model_name = model_id
+                elif isinstance(item, dict):
+                    model_id = str(item.get("id") or item.get("name") or "").strip()
+                    model_name = str(item.get("name") or model_id).strip()
+                else:
+                    continue
+                if model_id and model_id not in [model["id"] for model in models]:
+                    models.append({"id": model_id, "name": model_name})
+            identity = self._credential_identity(details.get("apiKey"))
+            result.append({
+                "id": provider,
+                "display_name": str(details.get("displayName") or provider),
+                "api_type": str(details.get("apiType") or "openai_compatible"),
+                "base_url": str(details.get("baseUrl") or ""),
+                "models": models,
+                "default_model": (
+                    active_model.split("/", 1)[1]
+                    if provider == active_provider and "/" in active_model
+                    else ""
+                ),
+                "timeout_seconds": int(details.get("timeoutSeconds") or 60),
+                "active": provider == active_provider,
+                "source": "~/.openclaw/openclaw.json",
+                **identity,
+            })
+        return result
+
+    def upsert_provider_config_safe(
+        self,
+        provider: str,
+        display_name: str = "",
+        api_type: str = "openai_compatible",
+        base_url: str = "",
+        models: Optional[list] = None,
+        default_model: str = "",
+        timeout_seconds: int = 60,
+        api_key: str = "",
+        clear_api_key: bool = False,
+    ) -> Dict[str, Any]:
+        provider = self._provider_slug(provider)
+        if api_type not in {"openai_compatible", "anthropic", "google", "local"}:
+            raise ValueError("Kiểu API provider không hợp lệ.")
+        if base_url and not str(base_url).startswith(("http://", "https://")):
+            raise ValueError("Base URL phải bắt đầu bằng http:// hoặc https://.")
+        try:
+            timeout_seconds = int(timeout_seconds)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Timeout phải là số nguyên.") from exc
+        if not 1 <= timeout_seconds <= 600:
+            raise ValueError("Timeout phải từ 1 đến 600 giây.")
+
+        normalized_models = []
+        for item in models or []:
+            if isinstance(item, str):
+                model_id = item.strip()
+                model_name = model_id
+            elif isinstance(item, dict):
+                model_id = str(item.get("id") or "").strip()
+                model_name = str(item.get("name") or model_id).strip()
+            else:
+                continue
+            if not model_id or len(model_id) > 200:
+                continue
+            if model_id not in [model["id"] for model in normalized_models]:
+                normalized_models.append({"id": model_id, "name": model_name})
+        if default_model and default_model not in {
+            model["id"] for model in normalized_models
+        }:
+            normalized_models.append({"id": default_model, "name": default_model})
+
+        config = self._load_config()
+        providers = config.setdefault("models", {}).setdefault("providers", {})
+        target = providers.setdefault(provider, {})
+        target.update({
+            "displayName": str(display_name or provider).strip(),
+            "apiType": api_type,
+            "baseUrl": str(base_url).strip(),
+            "models": normalized_models,
+            "timeoutSeconds": timeout_seconds,
+        })
+        if clear_api_key:
+            target.pop("apiKey", None)
+        elif api_key:
+            target["apiKey"] = str(api_key).strip()
+        if default_model:
+            config.setdefault("agents", {}).setdefault("defaults", {})[
+                "model"
+            ] = f"{provider}/{default_model}"
+        self._atomic_write_config(config)
+        return next(
+            item for item in self.list_provider_configs_safe()
+            if item["id"] == provider
+        )
+
+    def delete_provider_config_safe(self, provider: str) -> bool:
+        provider = self._provider_slug(provider)
+        config = self._load_config()
+        providers = config.get("models", {}).get("providers", {})
+        if not isinstance(providers, dict) or provider not in providers:
+            return False
+        active_model = str(
+            config.get("agents", {}).get("defaults", {}).get("model", "")
+        )
+        if active_model.startswith(f"{provider}/"):
+            raise ValueError("Không thể xóa provider đang được chọn làm mặc định.")
+        del providers[provider]
+        self._atomic_write_config(config)
+        return True
+
     def _atomic_write_config(self, config: Dict[str, Any]) -> None:
         fd, temp_path = tempfile.mkstemp(
             dir=str(self.openclaw_dir), prefix=".openclaw_", suffix=".tmp"
@@ -288,6 +423,7 @@ class OpenClawConfigService:
         enabled: bool,
         token: str = "",
         webhook_url: str = "",
+        webhook_secret: str = "",
         allow_from: Optional[list] = None,
     ) -> bool:
         if channel not in {"telegram", "zalo"} or not self.config_path.exists():
@@ -299,6 +435,8 @@ class OpenClawConfigService:
             target["botToken"] = token
         if webhook_url:
             target["webhookUrl"] = webhook_url
+        if webhook_secret:
+            target["webhookSecret"] = webhook_secret
         if allow_from is not None:
             target["allowFrom"] = list(allow_from)
             target["groupAllowFrom"] = list(allow_from)

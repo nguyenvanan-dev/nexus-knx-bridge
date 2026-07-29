@@ -3999,6 +3999,7 @@ async def setup_integrations(
             })
     return {
         "openclaw": openclaw_status,
+        "ai_provider_configs": openclaw_config_service.list_provider_configs_safe(),
         "ai_providers": sorted(
             provider_statuses.values(),
             key=lambda item: (not item.get("active", False), item["provider"]),
@@ -4007,6 +4008,53 @@ async def setup_integrations(
         "services": _safe_service_status(),
         "backup_available": (BASE_DIR / "smarthome.db").exists(),
     }
+
+
+@app.get("/api/setup/ai/providers")
+async def list_ai_provider_configs(
+    setup_user: dict = Depends(require_setup_access),
+):
+    return {
+        "ok": True,
+        "providers": openclaw_config_service.list_provider_configs_safe(),
+    }
+
+
+@app.put("/api/setup/ai/providers/{provider_id}")
+async def upsert_ai_provider_config(
+    provider_id: str,
+    payload: dict,
+    setup_user: dict = Depends(require_setup_access),
+):
+    try:
+        provider = openclaw_config_service.upsert_provider_config_safe(
+            provider=provider_id,
+            display_name=payload.get("display_name", ""),
+            api_type=payload.get("api_type", "openai_compatible"),
+            base_url=payload.get("base_url", ""),
+            models=payload.get("models", []),
+            default_model=payload.get("default_model", ""),
+            timeout_seconds=payload.get("timeout_seconds", 60),
+            api_key=payload.get("api_key", ""),
+            clear_api_key=bool(payload.get("clear_api_key", False)),
+        )
+        return {"ok": True, "provider": provider}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.delete("/api/setup/ai/providers/{provider_id}")
+async def delete_ai_provider_config(
+    provider_id: str,
+    setup_user: dict = Depends(require_setup_access),
+):
+    try:
+        deleted = openclaw_config_service.delete_provider_config_safe(provider_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Provider không tồn tại.")
+    return {"ok": True}
 
 
 @app.post("/api/setup/{category}")
@@ -4085,6 +4133,7 @@ async def setup_category(
                 enabled=bool(raw.get("enabled")),
                 token=str(raw.get("bot_token", "")),
                 webhook_url=str(raw.get("webhook_url", "")),
+                webhook_secret=str(raw.get("webhook_secret", "")),
                 allow_from=raw.get("allow_from", []),
             )
         return {"ok": True, "category": category, "data": res}
