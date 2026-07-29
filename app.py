@@ -3731,11 +3731,20 @@ DATABASE_SENSITIVE_COLUMN_MARKERS = (
 )
 
 
-def _database_admin_authorizer(action, arg1, _arg2, _db_name, _trigger_name):
+def _is_sensitive_database_column(column_name: str | None) -> bool:
+    return bool(column_name) and any(
+        marker in column_name.lower()
+        for marker in DATABASE_SENSITIVE_COLUMN_MARKERS
+    )
+
+
+def _database_admin_authorizer(action, arg1, arg2, _db_name, _trigger_name):
     if action == sqlite3.SQLITE_SELECT:
         return sqlite3.SQLITE_OK
-    if action == sqlite3.SQLITE_READ and arg1 in DATABASE_ADMIN_TABLES:
-        return sqlite3.SQLITE_OK
+    if action == sqlite3.SQLITE_READ:
+        if arg1 in DATABASE_ADMIN_TABLES and not _is_sensitive_database_column(arg2):
+            return sqlite3.SQLITE_OK
+        return sqlite3.SQLITE_DENY
     if action == sqlite3.SQLITE_FUNCTION:
         return sqlite3.SQLITE_OK
     return sqlite3.SQLITE_DENY

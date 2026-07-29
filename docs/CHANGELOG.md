@@ -15,7 +15,7 @@ This document tracks the high-level phases and milestones of the project.
 - Updated frontend dependencies and reduced `npm audit` findings to zero.
 - Added GitHub Actions for backend tests, frontend audit/build, and gitleaks.
 - Physical KNX, live Telegram/Zalo and Raspberry Pi reboot acceptance confirmed
-  by the project owner on 2026-07-29.
+  by the project owner on 2026-07-18.
 
 ## Phase A: Foundation & Architecture
 - Setup FastAPI backend and `xknx` tunneling.

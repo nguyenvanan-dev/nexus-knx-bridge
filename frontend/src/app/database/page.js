@@ -85,13 +85,14 @@ export default function DatabasePage() {
     if (viewMode === 'visual') {
         loadTableData(tableName);
     } else {
-        setQuery(`SELECT * FROM ${tableName} LIMIT 50;`);
-        setTimeout(handleExecute, 100);
+        const nextQuery = `SELECT * FROM ${tableName} LIMIT 50;`;
+        setQuery(nextQuery);
+        handleExecute(nextQuery);
     }
   };
 
-  const handleExecute = async () => {
-    if (!query.trim()) return;
+  const handleExecute = async (sql = query) => {
+    if (!sql.trim()) return;
     setExecuting(true);
     setQueryError(null);
     setQueryResult(null);
@@ -99,7 +100,7 @@ export default function DatabasePage() {
       const res = await fetch('/api/database/query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: query.trim() })
+        body: JSON.stringify({ query: sql.trim() })
       });
       const data = await res.json();
       if (!res.ok) setQueryError(data.detail || data.error || 'Unknown error');

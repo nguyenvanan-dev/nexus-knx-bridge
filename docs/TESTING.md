@@ -18,6 +18,6 @@ The following steps are required to finalize Phase D (Production Physical Deploy
 - [x] **System Reboot Test:** Reboot Raspberry Pi and verify both backend and OpenClaw start automatically.
 
 The four physical/E2E checks above were confirmed complete by the project owner
-on 2026-07-29. This release records that acceptance; it does not claim that
+on 2026-07-18. This release records that acceptance; it does not claim that
 fresh hardware, messaging or reboot logs were generated during the release
 hardening session.

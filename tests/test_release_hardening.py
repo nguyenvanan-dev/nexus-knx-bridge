@@ -52,6 +52,18 @@ def test_database_admin_authorizer_blocks_unapproved_tables(tmp_path):
         conn.set_authorizer(None)
 
 
+def test_database_admin_authorizer_blocks_sensitive_source_columns(tmp_path):
+    database = tmp_path / "test.db"
+    with sqlite3.connect(database) as conn:
+        conn.execute("CREATE TABLE devices (device_id TEXT, api_token TEXT)")
+        conn.execute("INSERT INTO devices VALUES ('light_1', 'not-a-real-secret')")
+        conn.commit()
+        conn.set_authorizer(_database_admin_authorizer)
+        with pytest.raises(sqlite3.DatabaseError):
+            conn.execute("SELECT hex(api_token) AS value FROM devices").fetchall()
+        conn.set_authorizer(None)
+
+
 def test_sqlite_backup_includes_committed_wal_data(tmp_path):
     source = tmp_path / "source.db"
     destination = tmp_path / "backup.db"
