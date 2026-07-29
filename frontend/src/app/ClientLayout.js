@@ -9,10 +9,6 @@ export default function ClientLayout({ children }) {
   const pathname = usePathname();
   const isLogin = pathname === '/login';
 
-  if (isLogin) {
-    return <main className="login-wrapper">{children}</main>;
-  }
-
   const [dialog, setDialog] = useState(null);
   const [toast, setToast] = useState(null);
 
@@ -31,6 +27,10 @@ export default function ClientLayout({ children }) {
         window.removeEventListener('show-toast', handleToast);
     };
   }, []);
+
+  if (isLogin) {
+    return <main className="login-wrapper">{children}</main>;
+  }
 
   return (
     <div className="dashboard-layout animate-fade-in">

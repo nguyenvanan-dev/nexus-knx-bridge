@@ -47,15 +47,32 @@ Setup Wizard hỗ trợ 10 bước cấu hình trực quan:
 1. **System Baseline:** Tên công trình, Múi giờ, Ngôn ngữ.
 2. **Admin Account:** Tạo tài khoản quản trị ban đầu.
 3. **KNX Gateway:** IP/Host, Port, kiểu kết nối (Tunneling/Routing), địa chỉ cá nhân + Nút kiểm tra Socket connection dry-run.
-4. **AI Provider:** Provider, model, base URL, API key và kiểm tra cấu hình.
-5. **OpenClaw Integration:** Runtime, workspace, provider/model, skill symlink và trạng thái 9router.
+4. **AI Provider:** Thêm nhiều provider, danh sách nhiều model, model mặc định,
+   kiểu API, base URL, timeout và API key được che an toàn.
+5. **OpenClaw Integration:** Runtime, workspace, provider/model, skill symlink,
+   trạng thái 9router và credential riêng cho skill/plugin.
 6. **Telegram Notification:** Bot Token, Chat ID, allow-list và trạng thái pairing.
-7. **Zalo Integration:** Webhook URL, allow-list và trạng thái pairing.
+7. **Zalo Integration:** Bot token, webhook URL, webhook secret, allow-list và
+   trạng thái pairing.
 8. **Remote Access:** Kiểm tra trạng thái Tailscale VPN (Read-only).
 9. **Review & Summary:** Khái quát toàn bộ cấu hình trước khi lưu.
 10. **Complete:** Kiểm tra các trường bắt buộc, lưu cấu hình và thông báo service cần restart.
 
-## 4. Quản Lý Dịch Vụ Systemd
+Các nút kiểm tra trong Wizard chỉ xác minh cấu trúc hoặc kết nối được mô tả
+trên giao diện. Chúng không gửi Telegram/Zalo thật và không ghi KNX.
+
+## 4. Kiểm Tra Trước Khi Kết Nối Thiết Bị Thật
+
+```bash
+PYTHONPATH=. .venv/bin/python -m pytest tests/ -q
+cd frontend
+npm audit --audit-level=high
+npm run build
+```
+
+Chỉ chạy KNX write hoặc gửi tin nhắn thử sau khi chủ hệ thống xác nhận rõ.
+
+## 5. Quản Lý Dịch Vụ Systemd
 ```bash
 # Khởi động dịch vụ
 systemctl --user start knx-bridge.service knx-frontend.service
@@ -64,7 +81,7 @@ systemctl --user start knx-bridge.service knx-frontend.service
 systemctl --user status knx-bridge.service knx-frontend.service
 ```
 
-## 5. Khôi Phục & Dọn Dẹp
+## 6. Khôi Phục & Dọn Dẹp
 Hủy dịch vụ và giữ lại database / config:
 ```bash
 ./uninstall.sh

@@ -481,7 +481,7 @@ export default function FloorPlanPage() {
           {/* Edit mode hint */}
           {editMode && (
             <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-blue-600/90 text-white text-xs px-4 py-2 rounded-full backdrop-blur-sm">
-              Drag device icons to reposition • Click "+" to add devices
+              Drag device icons to reposition • Click &quot;+&quot; to add devices
             </div>
           )}
         </div>

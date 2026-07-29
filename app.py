@@ -4090,9 +4090,10 @@ async def update_openclaw_skill_credential(
 @app.post("/api/setup/{category}")
 async def setup_category(
     category: str,
-    payload: dict,
+    payload: Optional[dict] = None,
     setup_user: dict = Depends(require_setup_access),
 ):
+    payload = payload or {}
     if category == "complete":
         raw = config_service.load_raw_config()
         blockers = []

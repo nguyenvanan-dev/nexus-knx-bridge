@@ -2,6 +2,21 @@
 
 This document tracks the high-level phases and milestones of the project.
 
+## v1.0.0-rc.1 - Release Candidate
+
+- Added secure first-run installer and isolated Setup Wizard.
+- Added dynamic AI providers, multiple models, default model selection, and
+  masked provider credentials.
+- Added OpenClaw skill/plugin credential management.
+- Added Telegram/Zalo configuration and pairing visibility.
+- Added secure ETS `.knxproj` parse, review, dry-run, and proposal workflow.
+- Removed `devices.json` from runtime configuration paths.
+- Added end-to-end setup simulation using temporary DB/config/runtime files.
+- Updated frontend dependencies and reduced `npm audit` findings to zero.
+- Added GitHub Actions for backend tests, frontend audit/build, and gitleaks.
+- Remaining release acceptance: owner-approved physical KNX and live
+  Telegram/Zalo tests.
+
 ## Phase A: Foundation & Architecture
 - Setup FastAPI backend and `xknx` tunneling.
 - Basic REST endpoints for device control.
